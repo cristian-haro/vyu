@@ -1,0 +1,26 @@
+# Dependencias y Logs de Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Datos Temporales de Ejecución (Ignorar resultados, uploads y capturas de prueba)
+data/comparisons/*
+!data/comparisons/.gitkeep
+data/uploads/*
+!data/uploads/.gitkeep
+data/maestro/current/*
+!data/maestro/current/.gitkeep
+
+# Nota: Mantenemos "data/samples/*" y "data/maestro/baseline/*" bajo control de versiones
+# ya que representan las capturas de diseño de referencia.
+
+# Archivos del Sistema Operativo
+.DS_Store
+Thumbs.db
+
+# Carpetas del IDE y Logs del Agente de IA
+.vscode/
+.idea/
+.gemini/
+*.log

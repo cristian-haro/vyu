@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vyú - Design Testing Workspace</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="dark-mode">
+
+  <!-- Contenedor Principal (App Grid) -->
+  <div class="app-container">
+
+    <!-- HEADER -->
+    <header class="app-header" style="height: 70px;">
+      <div class="header-logo" style="display: flex; align-items: center; gap: 10px;">
+        <img class="logo-img" src="logo.png" alt="Vyú Logo"
+          style="height: 48px; filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.15)); animation: float-logo 4s ease-in-out infinite;">
+        <div style="border-left: 1px solid rgba(255,255,255,0.1); padding-left: 12px; margin-left: 4px;">
+          <p class="tagline"
+            style="color: #cbd5e1; font-weight: 600; font-family: var(--font-display); letter-spacing: 0.05em; text-transform: uppercase; font-size: 0.72rem;">
+            Workspace</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <span class="status-indicator online"></span>
+        <span class="status-text">Servidor Activo (Puerto 3000)</span>
+      </div>
+    </header>
+
+    <!-- CUERPO DE LA APLICACIÓN -->
+    <div class="app-body">
+
+      <!-- COLUMNA IZQUIERDA: Scripts y Carga -->
+      <aside class="sidebar sidebar-left">
+
+        <!-- Sección 2: Carga Rápida de Archivos -->
+        <div class="sidebar-section glass-panel">
+          <h3>Carga Rápida (Quick Compare)</h3>
+          <p class="section-desc">Arrastra o sube dos imágenes PNG locales para compararlas directamente.</p>
+
+          <div class="upload-zone-wrapper">
+            <!-- Zona de Carga 1: Baseline -->
+            <div class="upload-zone" id="zone-baseline">
+              <input type="file" id="file-baseline" accept="image/png" class="file-input">
+              <div class="upload-zone-content">
+                <span class="upload-label">Baseline (Base)</span>
+                <span class="file-name" id="name-baseline">Sin archivo</span>
+              </div>
+            </div>
+
+            <!-- Zona de Carga 2: Current -->
+            <div class="upload-zone" id="zone-current">
+              <input type="file" id="file-current" accept="image/png" class="file-input">
+              <div class="upload-zone-content">
+                <span class="upload-label">Current (Prueba)</span>
+                <span class="file-name" id="name-current">Sin archivo</span>
+              </div>
+            </div>
+          </div>
+
+          <button id="btn-quick-compare" class="btn btn-primary btn-full mt-10" disabled>
+            <span>Ejecutar Comparación Rápida</span>
+          </button>
+        </div>
+
+        <!-- Sección 2.5: Historial de Diffs -->
+        <div class="sidebar-section glass-panel" id="section-history"
+          style="max-height: 250px; display: flex; flex-direction: column;">
+          <h3>Historial de Diffs</h3>
+          <p class="section-desc">Historial de comparaciones procesadas en el servidor.</p>
+          <div class="history-list" id="history-container"
+            style="overflow-y: auto; display: flex; flex-direction: column; gap: 8px; flex: 1; max-height: 150px; padding-right: 4px;">
+            <p class="section-desc" style="text-align: center; color: #475569; padding: 10px;">Ninguna comparación
+              previa.</p>
+          </div>
+        </div>
+
+        <!-- Sección 3: Gestor de Scripts de Node.js -->
+        <div class="sidebar-section glass-panel">
+          <h3>Scripts de Comparación</h3>
+          <p class="section-desc">Scripts de Javascript (.js) en la carpeta <code>scripts/</code>.</p>
+          <div class="scripts-list" id="scripts-container">
+            <div class="loading-spinner-wrapper">
+              <span class="spinner"></span>
+              <span>Buscando scripts locales...</span>
+            </div>
+          </div>
+        </div>
+
+      </aside>
+
+      <!-- ÁREA CENTRAL: Espacio de Trabajo Visual (Visualizer) -->
+      <main class="visualizer-workspace">
+
+        <!-- Pestañas de Modos de Visualización -->
+        <div class="view-tabs-bar glass-panel">
+          <div class="tabs-group">
+            <button class="tab-btn active" data-tab="side-by-side">
+              <span class="tab-icon">📐</span> Side-by-Side
+            </button>
+            <button class="tab-btn" data-tab="split-slider">
+              <span class="tab-icon">↔️</span> Split Slider
+            </button>
+            <button class="tab-btn" data-tab="opacity-overlay">
+              <span class="tab-icon">🌓</span> Opacity Overlay
+            </button>
+          </div>
+
+          <!-- Controles de Navegación del Visualizador -->
+          <div class="visualizer-controls">
+            <button id="btn-reset-zoom" class="btn btn-icon-only" title="Restaurar Zoom y Posición">
+              <span>Restaurar</span>
+            </button>
+            <div class="zoom-info">Zoom: <span id="zoom-value">100%</span></div>
+          </div>
+        </div>
+
+        <!-- Visor de Imágenes según el modo seleccionado -->
+        <div class="workspace-viewport glass-panel">
+
+          <!-- MODO 1: Side-by-Side (Tres columnas sincronizadas) -->
+          <div class="view-mode-container active" id="mode-side-by-side">
+
+            <div class="viewport-box" id="box-baseline">
+              <div class="viewport-header">
+                <span class="badge badge-indigo">BASE (V1)</span>
+                <span class="image-dimensions" id="dim-baseline">-</span>
+              </div>
+              <div class="image-wrapper viewport-sync">
+                <img id="img-base-sbs" class="zoomable-img" src="" alt="Sube o selecciona imágenes">
+                <div class="pixel-info-float" id="pixel-info-base"></div>
+              </div>
+            </div>
+
+            <div class="viewport-box" id="box-current">
+              <div class="viewport-header">
+                <span class="badge badge-pink">CURRENT (V2)</span>
+                <span class="image-dimensions" id="dim-current">-</span>
+              </div>
+              <div class="image-wrapper viewport-sync">
+                <img id="img-current-sbs" class="zoomable-img" src="" alt="Sube o selecciona imágenes">
+                <div class="pixel-info-float" id="pixel-info-current"></div>
+              </div>
+            </div>
+
+            <div class="viewport-box" id="box-diff">
+              <div class="viewport-header"
+                style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <span class="badge badge-danger">DIFF (DIFERENCIAS)</span>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="image-dimensions" id="dim-diff">-</span>
+                  <a id="btn-download-diff" class="btn btn-secondary"
+                    style="padding: 2px 6px; font-size: 0.65rem; height: 22px; display: none; text-decoration: none;"
+                    download="diff.png" href="#">Descargar</a>
+                </div>
+              </div>
+              <div class="image-wrapper viewport-sync">
+                <img id="img-diff-sbs" class="zoomable-img" src="" alt="Genera la diferencia">
+                <div class="pixel-info-float" id="pixel-info-diff"></div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- MODO 2: Split Slider (Swipe vertical interactivo con mouse) -->
+          <div class="view-mode-container" id="mode-split-slider">
+            <div class="slider-viewport" id="slider-container">
+
+              <!-- Imagen Base (Fondo) -->
+              <img id="img-base-slider" class="slider-img" src="" alt="Imagen Base">
+
+              <!-- Imagen Current (Superpuesta y recortada) -->
+              <div class="slider-overlay-container" id="slider-overlay">
+                <img id="img-current-slider" class="slider-img" src="" alt="Imagen de Prueba">
+              </div>
+
+              <!-- Manija del Slider -->
+              <div class="slider-handle" id="slider-handle">
+                <div class="handle-line"></div>
+                <div class="handle-button">
+                  <span>↔️</span>
+                </div>
+              </div>
+
+              <div class="slider-indicators">
+                <span class="badge badge-indigo label-left">BASE (Izquierda)</span>
+                <span class="badge badge-pink label-right">CURRENT (Derecha)</span>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- MODO 3: Opacity Overlay (Transparencia ajustable) -->
+          <div class="view-mode-container" id="mode-opacity-overlay">
+            <div class="overlay-viewport">
+
+              <div class="overlay-image-container">
+                <!-- Base abajo -->
+                <img id="img-base-overlay" class="overlay-img base" src="" alt="Imagen Base">
+                <!-- Current arriba con opacidad controlada -->
+                <img id="img-current-overlay" class="overlay-img current" src="" alt="Imagen de Prueba">
+              </div>
+
+              <!-- Control inferior de opacidad -->
+              <div class="overlay-opacity-controls">
+                <span class="label">BASE</span>
+                <input type="range" id="range-opacity" min="0" max="1" step="0.01" value="0.5" class="slider-range">
+                <span class="label">CURRENT (<span id="val-opacity">50%</span>)</span>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Métrica de Comparación Visual -->
+        <div class="comparison-summary-bar glass-panel" id="comparison-result-bar">
+          <div class="summary-metric">
+            <span class="metric-label">Desajuste de Píxeles:</span>
+            <span class="metric-value" id="res-mismatch-pixels">0 px</span>
+          </div>
+          <div class="summary-metric">
+            <span class="metric-label">Porcentaje de Diferencia:</span>
+            <span class="metric-value text-warning" id="res-mismatch-percentage">0.00%</span>
+          </div>
+          <div class="summary-metric status-badge-wrapper">
+            <span class="badge-status badge-success" id="res-status-badge">Sin evaluar</span>
+          </div>
+        </div>
+
+      </main>
+
+      <!-- COLUMNA DERECHA: Parámetros y Consola de Scripts -->
+      <aside class="sidebar sidebar-right">
+
+        <!-- Sección 1: Parámetros de Pixelmatch -->
+        <div class="sidebar-section glass-panel">
+          <h3>Parámetros de Ajuste</h3>
+          <p class="section-desc">Personaliza el motor de comparación pixelmatch.</p>
+
+          <div class="parameter-group">
+            <div class="parameter-header">
+              <label for="range-threshold">Sensibilidad (Threshold)</label>
+              <span class="parameter-value" id="val-threshold">0.10</span>
+            </div>
+            <input type="range" id="range-threshold" min="0.0" max="1.0" step="0.01" value="0.10" class="slider-range">
+            <span class="parameter-tip">Un valor menor (ej. 0.05) hace la comparación más estricta a variaciones de
+              color. Un valor mayor la hace más tolerante.</span>
+          </div>
+
+          <div class="parameter-group checkbox-group">
+            <label class="checkbox-container">
+              <input type="checkbox" id="chk-include-aa">
+              <span class="checkmark"></span>
+              <span class="checkbox-label">Ignorar Anti-Aliasing (Suavizado)</span>
+            </label>
+            <span class="parameter-tip">Evita falsos positivos causados por el suavizado de bordes en fuentes de texto o
+              gráficos curvos.</span>
+          </div>
+
+          <div class="parameter-group">
+            <label>Color de Diferencia (Diff)</label>
+            <div class="color-options-grid">
+              <button class="color-dot active" style="background-color: #ff003c" data-color="[255,0,60]"
+                title="Rojo Neón"></button>
+              <button class="color-dot" style="background-color: #e000ff" data-color="[224,0,255]"
+                title="Fucsia"></button>
+              <button class="color-dot" style="background-color: #ffcc00" data-color="[255,204,0]"
+                title="Amarillo"></button>
+              <button class="color-dot" style="background-color: #a855f7" data-color="[168,85,247]"
+                title="Violeta"></button>
+              <button class="color-dot" style="background-color: #00f0ff" data-color="[0,240,255]"
+                title="Cian"></button>
+            </div>
+          </div>
+
+          <button id="btn-recompare" class="btn btn-primary btn-full mt-10">
+            <span>Actualizar PixelMatch</span>
+          </button>
+        </div>
+
+        <!-- Sección 2: Consola del Terminal de Ejecución -->
+        <div class="sidebar-section glass-panel terminal-section">
+          <div class="terminal-header">
+            <h3>Consola del Script</h3>
+            <div class="terminal-actions">
+              <button id="btn-clear-terminal" class="btn-terminal-action" title="Limpiar Consola">Limpiar</button>
+            </div>
+          </div>
+          <div class="terminal-body" id="terminal-console">
+            <div class="terminal-line system-msg">> Bienvenido al terminal de ejecución de Vyú.</div>
+            <div class="terminal-line system-msg">> Selecciona un script en el panel izquierdo y haz clic en "Ejecutar
+              Script" para iniciar la automatización.</div>
+          </div>
+          <div class="terminal-footer">
+            <span class="terminal-status" id="terminal-status">Consola lista e inactiva</span>
+          </div>
+        </div>
+
+      </aside>
+
+    </div>
+
+  </div>
+
+  <!-- JavaScript Principal -->
+  <script src="app.js"></script>
+</body>
+
+</html>

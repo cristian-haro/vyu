@@ -1,0 +1,18 @@
+# Ignorar módulos locales instalados
+node_modules
+npm-debug.log
+
+# Ignorar archivos locales temporales y resultados
+data/comparisons/*
+data/uploads/*
+!data/samples/
+
+# Ignorar configuraciones e historiales locales del IDE
+.git
+.gemini
+.gitignore
+.dockerignore
+Dockerfile
+
+# Ignorar archivos de documentación y scripts temporales
+*.md
