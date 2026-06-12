@@ -316,6 +316,7 @@ app.post('/api/compare', upload.fields([
     if (width !== img2.width || height !== img2.height) {
       console.log(`[RESIZE] Las dimensiones no coinciden. Redimensionando Current de ${img2.width}x${img2.height} a ${width}x${height}`);
       img2 = resizePNG(img2, width, height);
+      fs.writeFileSync(currentPath, PNG.sync.write(img2));
     }
 
     const diff = new PNG({ width, height });

@@ -111,9 +111,10 @@ currentFiles.forEach(file => {
     const { width, height } = imgBase;
     
     if (width !== imgCur.width || height !== imgCur.height) {
-      console.log(`   [RESIZE] Dimensiones no coinciden. Redimensionando Current (${imgCur.width}x${imgCur.height}) a Baseline (${width}x${height})`);
-      imgCur = resizePNG(imgCur, width, height);
-    }
+       console.log(`   [RESIZE] Dimensiones no coinciden. Redimensionando Current (${imgCur.width}x${imgCur.height}) a Baseline (${width}x${height})`);
+       imgCur = resizePNG(imgCur, width, height);
+       fs.writeFileSync(curFile, PNG.sync.write(imgCur));
+     }
     
     const diff = new PNG({ width, height });
     
