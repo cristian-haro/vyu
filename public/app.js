@@ -33,7 +33,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Historial y Vista Activa
     activeTab: 'side-by-side',
-    isComparing: false
+    isComparing: false,
+
+    // Estado de Anotaciones
+    activeTool: 'pan', // 'pan', 'pencil', 'rect', 'circle'
+    annotationColor: '#ff003c',
+    annotationThickness: 4,
+    annotations: [],
+    isDrawing: false,
+    currentShape: null
   };
 
   // ==========================================
@@ -49,6 +57,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const imgCurrentSbs = document.getElementById('img-current-sbs');
   const imgDiffSbs = document.getElementById('img-diff-sbs');
   const viewportsSync = document.querySelectorAll('.viewport-sync');
+  
+  // Canvas de Anotación (Side-by-Side)
+  const canvasBaseSbs = document.getElementById('canvas-base-sbs');
+  const canvasCurrentSbs = document.getElementById('canvas-current-sbs');
+  const canvasDiffSbs = document.getElementById('canvas-diff-sbs');
+  const annotationToolbar = document.getElementById('annotation-toolbar');
+  const toolBtns = document.querySelectorAll('.tool-btn');
+  const selectThickness = document.getElementById('select-thickness');
+  const annotColorDots = document.querySelectorAll('.annot-color-dot');
+  const btnUndoAnnot = document.getElementById('btn-undo-annot');
+  const btnClearAnnot = document.getElementById('btn-clear-annot');
+  const btnDownloadConfronted = document.getElementById('btn-download-confronted');
+  const actionControlsGroup = document.getElementById('action-controls-group');
   
   // Elementos de Imagen (Slider)
   const sliderContainer = document.getElementById('slider-container');
@@ -92,7 +113,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnQuickCompare = document.getElementById('btn-quick-compare');
   const historyContainer = document.getElementById('history-container');
   const btnDownloadDiff = document.getElementById('btn-download-diff');
-  const scriptsContainer = document.getElementById('scripts-container');
 
   // Terminal / Consola
   const terminalConsole = document.getElementById('terminal-console');
@@ -100,8 +120,43 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnClearTerminal = document.getElementById('btn-clear-terminal');
 
   // ==========================================
-  // 3. LOGICA DE NAVEGACION, ZOOM Y PAN (Sincronizada)
+  // 3. LOGICA DE NAVEGACION, ZOOM Y PAN (Sincronizada) & DIBUJO
   // ==========================================
+
+  let isSpacePressed = false;
+
+  window.addEventListener('keydown', (e) => {
+    // Si el usuario está interactuando con una entrada de texto, no interferir con la barra espaciadora
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
+      return;
+    }
+    if (e.code === 'Space') {
+      isSpacePressed = true;
+      if (state.activeTool !== 'pan') {
+        viewportsSync.forEach(vp => vp.style.cursor = 'grab');
+      }
+      e.preventDefault();
+    }
+  });
+
+  window.addEventListener('keyup', (e) => {
+    if (e.code === 'Space') {
+      isSpacePressed = false;
+      updateCursor();
+    }
+  });
+
+  function updateCursor() {
+    viewportsSync.forEach(viewport => {
+      if (state.activeTool === 'pan' || isSpacePressed) {
+        viewport.style.cursor = 'grab';
+      } else if (state.activeTool === 'eraser') {
+        viewport.style.cursor = 'pointer';
+      } else {
+        viewport.style.cursor = 'crosshair';
+      }
+    });
+  }
 
   // Aplicar transformación de escala y desplazamiento a las imágenes del modo Side-by-Side
   function applyTransformations() {
@@ -110,8 +165,171 @@ document.addEventListener('DOMContentLoaded', () => {
     imgCurrentSbs.style.transform = transformStr;
     imgDiffSbs.style.transform = transformStr;
     
+    if (canvasBaseSbs) canvasBaseSbs.style.transform = transformStr;
+    if (canvasCurrentSbs) canvasCurrentSbs.style.transform = transformStr;
+    if (canvasDiffSbs) canvasDiffSbs.style.transform = transformStr;
+    
     // Actualizar texto del zoom
     zoomValueText.textContent = `${Math.round(state.zoom * 100)}%`;
+  }
+
+  // Ajustar tamaño del lienzo de dibujo al tamaño natural de la imagen
+  function resizeCanvases() {
+    if (!imgBaseSbs || !imgBaseSbs.src || imgBaseSbs.naturalWidth === 0) return;
+    const w = imgBaseSbs.naturalWidth;
+    const h = imgBaseSbs.naturalHeight;
+    [canvasBaseSbs, canvasCurrentSbs, canvasDiffSbs].forEach(canvas => {
+      if (canvas && (canvas.width !== w || canvas.height !== h)) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+    });
+  }
+
+  // Dibujar una forma individual
+  function drawShape(ctx, shape) {
+    ctx.strokeStyle = shape.color;
+    ctx.lineWidth = shape.thickness;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    
+    // Efecto resplandeciente
+    ctx.shadowColor = shape.color;
+    ctx.shadowBlur = 6;
+    
+    if (shape.type === 'pencil') {
+      if (shape.points.length < 2) return;
+      ctx.beginPath();
+      ctx.moveTo(shape.points[0].x, shape.points[0].y);
+      for (let i = 1; i < shape.points.length; i++) {
+        ctx.lineTo(shape.points[i].x, shape.points[i].y);
+      }
+      ctx.stroke();
+    } else if (shape.type === 'rect') {
+      ctx.beginPath();
+      ctx.rect(shape.x, shape.y, shape.w, shape.h);
+      ctx.stroke();
+    } else if (shape.type === 'circle') {
+      ctx.beginPath();
+      ctx.arc(shape.x, shape.y, shape.r, 0, 2 * Math.PI);
+      ctx.stroke();
+    } else if (shape.type === 'text') {
+      // Dibujar punto de anclaje
+      ctx.beginPath();
+      ctx.arc(shape.x, shape.y, Math.max(4, shape.thickness), 0, 2 * Math.PI);
+      ctx.fillStyle = shape.color;
+      ctx.fill();
+      
+      // Dibujar caja de fondo y texto
+      // Escalamos el tamaño de fuente para que sea muy legible en imágenes de alta resolución
+      const fontSize = Math.max(16, shape.thickness * 8);
+      ctx.font = `bold ${fontSize}px sans-serif`;
+      
+      // Medir ancho
+      const textWidth = ctx.measureText(shape.text).width;
+      const textHeight = fontSize;
+      const padding = Math.max(6, fontSize * 0.35);
+      
+      const boxX = shape.x + Math.max(10, fontSize * 0.5);
+      const boxY = shape.y - textHeight / 2 - padding;
+      const boxW = textWidth + padding * 2;
+      const boxH = textHeight + padding * 2;
+      
+      // Dibujar la caja de fondo
+      ctx.shadowBlur = 0; // Desactivar glow para bordes nítidos de texto
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(boxX, boxY, boxW, boxH, 6);
+      } else {
+        ctx.rect(boxX, boxY, boxW, boxH);
+      }
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+      ctx.fill();
+      ctx.strokeStyle = shape.color;
+      ctx.lineWidth = Math.max(1.5, shape.thickness * 0.4);
+      ctx.stroke();
+      
+      // Dibujar texto
+      ctx.fillStyle = '#ffffff';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(shape.text, boxX + padding, boxY + boxH / 2);
+    }
+  }
+
+  // Calcular distancia de un punto a un segmento de línea
+  function distToSegment(p, v, w) {
+    const l2 = (v.x - w.x)**2 + (v.y - w.y)**2;
+    if (l2 === 0) return Math.sqrt((p.x - v.x)**2 + (p.y - v.y)**2);
+    let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+    t = Math.max(0, Math.min(1, t));
+    const projX = v.x + t * (w.x - v.x);
+    const projY = v.y + t * (w.y - v.y);
+    return Math.sqrt((p.x - projX)**2 + (p.y - projY)**2);
+  }
+
+  // Comprobar si el clic está sobre una forma dada
+  function checkShapeHit(shape, x, y) {
+    const threshold = Math.max(shape.thickness + 6, 12);
+    
+    if (shape.type === 'circle') {
+      const dist = Math.sqrt((x - shape.x)**2 + (y - shape.y)**2);
+      return Math.abs(dist - shape.r) <= threshold;
+    }
+    
+    if (shape.type === 'rect') {
+      const left = Math.min(shape.x, shape.x + shape.w);
+      const right = Math.max(shape.x, shape.x + shape.w);
+      const top = Math.min(shape.y, shape.y + shape.h);
+      const bottom = Math.max(shape.y, shape.y + shape.h);
+      
+      const hitLeft = Math.abs(x - left) <= threshold && y >= top - threshold && y <= bottom + threshold;
+      const hitRight = Math.abs(x - right) <= threshold && y >= top - threshold && y <= bottom + threshold;
+      const hitTop = Math.abs(y - top) <= threshold && x >= left - threshold && x <= right + threshold;
+      const hitBottom = Math.abs(y - bottom) <= threshold && x >= left - threshold && x <= right + threshold;
+      return hitLeft || hitRight || hitTop || hitBottom;
+    }
+    
+    if (shape.type === 'pencil') {
+      for (let i = 0; i < shape.points.length - 1; i++) {
+        const d = distToSegment({ x, y }, shape.points[i], shape.points[i+1]);
+        if (d <= threshold) {
+          return true;
+        }
+      }
+    }
+    
+    if (shape.type === 'text') {
+      const fontSize = Math.max(16, shape.thickness * 8);
+      const textWidth = shape.text.length * (fontSize * 0.65);
+      const textHeight = fontSize;
+      const padding = Math.max(6, fontSize * 0.35);
+      
+      const boxX = shape.x + Math.max(10, fontSize * 0.5);
+      const boxY = shape.y - textHeight / 2 - padding;
+      const boxW = textWidth + padding * 2;
+      const boxH = textHeight + padding * 2;
+      
+      const hitBox = x >= boxX && x <= boxX + boxW && y >= boxY && y <= boxY + boxH;
+      const distAnchor = Math.sqrt((x - shape.x)**2 + (y - shape.y)**2);
+      const hitAnchor = distAnchor <= threshold;
+      
+      return hitBox || hitAnchor;
+    }
+    
+    return false;
+  }
+
+  // Redibujar todas las marcas en los tres canvas
+  function redrawAllCanvases() {
+    const canvases = [canvasBaseSbs, canvasCurrentSbs, canvasDiffSbs];
+    canvases.forEach(canvas => {
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      state.annotations.forEach(shape => {
+        drawShape(ctx, shape);
+      });
+    });
   }
 
   // Escuchar el evento wheel en los contenedores de imagen
@@ -139,30 +357,154 @@ document.addEventListener('DOMContentLoaded', () => {
       applyTransformations();
     });
 
-    // Paneo con el click del mouse (Arrastrar)
+    // Paneo con el click del mouse (Arrastrar), dibujo o borrado si está activo
     viewport.addEventListener('mousedown', (e) => {
+      const img = viewport.querySelector('img');
+      if (!img || !img.src || img.naturalWidth === 0) return;
+
+      // Si hacemos clic en un input de nota activo, no interferir con él
+      if (e.target.classList.contains('annotation-inline-input')) {
+        return;
+      }
+      
       e.preventDefault();
-      state.isPanning = true;
-      state.activeViewport = viewport;
-      state.startX = e.clientX - state.panX;
-      state.startY = e.clientY - state.panY;
-      viewport.style.cursor = 'grabbing';
+      
+      if (state.activeTool !== 'pan' && !isSpacePressed) {
+        const rect = img.getBoundingClientRect();
+        const clickX = ((e.clientX - rect.left) / rect.width) * img.naturalWidth;
+        const clickY = ((e.clientY - rect.top) / rect.height) * img.naturalHeight;
+
+        if (state.activeTool === 'eraser') {
+          // Modo Borrador: eliminar la marca clicada
+          for (let i = state.annotations.length - 1; i >= 0; i--) {
+            if (checkShapeHit(state.annotations[i], clickX, clickY)) {
+              state.annotations.splice(i, 1);
+              redrawAllCanvases();
+              writeToTerminal('system', 'Marca eliminada.');
+              break;
+            }
+          }
+        } else if (state.activeTool === 'text') {
+          // Modo Nota de texto
+          // Si ya hay un input abierto, quitarlo
+          const existingInput = document.querySelector('.annotation-inline-input');
+          if (existingInput) {
+            existingInput.blur();
+            return;
+          }
+
+          // Crear caja de entrada inline
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.className = 'annotation-inline-input';
+          input.placeholder = 'Escribe una nota...';
+          
+          // Posición en pantalla relativa al viewport contenedor
+          const wrapperRect = viewport.getBoundingClientRect();
+          input.style.left = `${e.clientX - wrapperRect.left}px`;
+          input.style.top = `${e.clientY - wrapperRect.top}px`;
+          
+          viewport.appendChild(input);
+          setTimeout(() => input.focus(), 50);
+
+          const saveText = () => {
+            const val = input.value.trim();
+            if (val) {
+              state.annotations.push({
+                type: 'text',
+                x: clickX,
+                y: clickY,
+                text: val,
+                color: state.annotationColor,
+                thickness: state.annotationThickness
+              });
+              redrawAllCanvases();
+              writeToTerminal('system', `Nota añadida: "${val}"`);
+            }
+            input.remove();
+          };
+
+          input.addEventListener('keydown', (evt) => {
+            if (evt.key === 'Enter') {
+              saveText();
+            } else if (evt.key === 'Escape') {
+              input.remove();
+            }
+          });
+
+          input.addEventListener('blur', () => {
+            setTimeout(() => {
+              if (input.parentNode) {
+                saveText();
+              }
+            }, 100);
+          });
+        } else {
+          // Modo Dibujo
+          state.isDrawing = true;
+          
+          state.currentShape = {
+            type: state.activeTool,
+            color: state.annotationColor,
+            thickness: state.annotationThickness,
+            x: clickX,
+            y: clickY,
+            w: 0,
+            h: 0,
+            r: 0,
+            points: [{ x: clickX, y: clickY }]
+          };
+          
+          state.annotations.push(state.currentShape);
+        }
+      } else {
+        // Modo Paneo
+        state.isPanning = true;
+        state.activeViewport = viewport;
+        state.startX = e.clientX - state.panX;
+        state.startY = e.clientY - state.panY;
+        viewport.style.cursor = 'grabbing';
+      }
     });
   });
 
   window.addEventListener('mousemove', (e) => {
-    if (!state.isPanning) return;
-    state.panX = e.clientX - state.startX;
-    state.panY = e.clientY - state.startY;
-    applyTransformations();
+    if (state.isPanning) {
+      state.panX = e.clientX - state.startX;
+      state.panY = e.clientY - state.startY;
+      applyTransformations();
+    } else if (state.isDrawing && state.currentShape) {
+      const img = imgBaseSbs; // Usamos el bounding box del base ya que todos están alineados y escalados por igual
+      if (!img || !img.src || img.naturalWidth === 0) return;
+      
+      const rect = img.getBoundingClientRect();
+      const curX = ((e.clientX - rect.left) / rect.width) * img.naturalWidth;
+      const curY = ((e.clientY - rect.top) / rect.height) * img.naturalHeight;
+      
+      if (state.currentShape.type === 'pencil') {
+        state.currentShape.points.push({ x: curX, y: curY });
+      } else if (state.currentShape.type === 'rect') {
+        state.currentShape.w = curX - state.currentShape.x;
+        state.currentShape.h = curY - state.currentShape.y;
+      } else if (state.currentShape.type === 'circle') {
+        const dx = curX - state.currentShape.x;
+        const dy = curY - state.currentShape.y;
+        state.currentShape.r = Math.sqrt(dx * dx + dy * dy);
+      }
+      
+      redrawAllCanvases();
+    }
   });
 
   window.addEventListener('mouseup', () => {
     if (state.isPanning) {
       state.isPanning = false;
       if (state.activeViewport) {
-        state.activeViewport.style.cursor = 'grab';
+        updateCursor();
       }
+    } else if (state.isDrawing) {
+      state.isDrawing = false;
+      state.currentShape = null;
     }
   });
 
@@ -247,19 +589,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Cargar imágenes correspondientes al estado en la vista activa
   function updateImagesInDOM() {
-    if (!state.baselineUrl || !state.currentUrl) return;
+    if (!state.baselineUrl || !state.currentUrl) {
+      updateToolbarVisibility();
+      return;
+    }
 
     if (state.activeTab === 'side-by-side') {
+      // Mostrar dimensiones cuando carguen (asociar antes de asignar src)
+      imgBaseSbs.onload = () => {
+        dimBaseline.textContent = `${imgBaseSbs.naturalWidth}x${imgBaseSbs.naturalHeight}px`;
+        resizeCanvases();
+        redrawAllCanvases();
+      };
+      imgCurrentSbs.onload = () => {
+        dimCurrent.textContent = `${imgCurrentSbs.naturalWidth}x${imgCurrentSbs.naturalHeight}px`;
+        resizeCanvases();
+        redrawAllCanvases();
+      };
+      imgDiffSbs.onload = () => {
+        dimDiff.textContent = `${imgDiffSbs.naturalWidth}x${imgDiffSbs.naturalHeight}px`;
+        resizeCanvases();
+        redrawAllCanvases();
+      };
+
       imgBaseSbs.src = state.baselineUrl;
       imgCurrentSbs.src = state.currentUrl;
       imgDiffSbs.src = state.diffUrl || '';
-      
-      // Mostrar dimensiones cuando carguen
-      imgBaseSbs.onload = () => dimBaseline.textContent = `${imgBaseSbs.naturalWidth}x${imgBaseSbs.naturalHeight}px`;
-      imgCurrentSbs.onload = () => dimCurrent.textContent = `${imgCurrentSbs.naturalWidth}x${imgCurrentSbs.naturalHeight}px`;
-      if (imgDiffSbs.src) {
-        imgDiffSbs.onload = () => dimDiff.textContent = `${imgDiffSbs.naturalWidth}x${imgDiffSbs.naturalHeight}px`;
-      }
     } 
     else if (state.activeTab === 'split-slider') {
       imgBaseSlider.src = state.baselineUrl;
@@ -270,6 +625,28 @@ document.addEventListener('DOMContentLoaded', () => {
       imgCurrentOverlay.src = state.currentUrl;
       // Ajustar opacidad según slider
       imgCurrentOverlay.style.opacity = rangeOpacity.value;
+    }
+
+    updateToolbarVisibility();
+  }
+
+  function updateToolbarVisibility() {
+    if (state.baselineUrl && state.currentUrl && state.activeTab === 'side-by-side') {
+      if (annotationToolbar) annotationToolbar.style.display = 'flex';
+      if (actionControlsGroup) actionControlsGroup.style.display = 'flex';
+      if (canvasBaseSbs) canvasBaseSbs.style.display = 'block';
+      if (canvasCurrentSbs) canvasCurrentSbs.style.display = 'block';
+      if (canvasDiffSbs) canvasDiffSbs.style.display = 'block';
+      
+      resizeCanvases();
+      redrawAllCanvases();
+      updateCursor();
+    } else {
+      if (annotationToolbar) annotationToolbar.style.display = 'none';
+      if (actionControlsGroup) actionControlsGroup.style.display = 'none';
+      if (canvasBaseSbs) canvasBaseSbs.style.display = 'none';
+      if (canvasCurrentSbs) canvasCurrentSbs.style.display = 'none';
+      if (canvasDiffSbs) canvasDiffSbs.style.display = 'none';
     }
   }
 
@@ -543,51 +920,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   // ==========================================
-  // 10. GESTOR DE SCRIPTS LOCALES (Cargar y Ejecutar)
-  // ==========================================
-
-  async function loadScriptsList() {
-    try {
-      const response = await fetch('/api/scripts');
-      const scripts = await response.json();
-      
-      scriptsContainer.innerHTML = '';
-      
-      if (scripts.length === 0) {
-        scriptsContainer.innerHTML = '<p class="section-desc">No se encontraron archivos .js en <code>scripts/</code>.</p>';
-        return;
-      }
-
-      scripts.forEach(script => {
-        const card = document.createElement('div');
-        card.className = 'script-item';
-        card.innerHTML = `
-          <div class="script-meta">
-            <span class="script-name">${script.name}</span>
-            <span class="badge badge-indigo">${(script.size / 1024).toFixed(1)} KB</span>
-          </div>
-          <p class="script-desc">${script.description}</p>
-          <div class="script-actions">
-            <button class="btn btn-secondary btn-run-script" data-name="${script.name}">Ejecutar</button>
-          </div>
-        `;
-        scriptsContainer.appendChild(card);
-      });
-
-      // Añadir evento a los botones de ejecución
-      document.querySelectorAll('.btn-run-script').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const scriptName = btn.dataset.name;
-          runScript(scriptName);
-        });
-      });
-
-    } catch (e) {
-      scriptsContainer.innerHTML = '<p class="section-desc text-danger">Error al cargar scripts.</p>';
-    }
-  }
-
-  // ==========================================
   // 10.5 GESTOR DE HISTORIAL DE DIFFS (Cargar y restaurar)
   // ==========================================
   async function loadHistoryList(autoClickFirst = false) {
@@ -701,89 +1033,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Ejecutar script con lectura de stream chunked en tiempo real (Fetch + ReadableStream)
-  async function runScript(scriptName) {
-    writeToTerminal('prompt', `\n$ node scripts/${scriptName}`);
-    terminalStatus.textContent = `Ejecutando ${scriptName}...`;
-    
-    try {
-      const response = await fetch('/api/scripts/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scriptName })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        writeToTerminal('stderr', `Fallo al iniciar el script: ${errorText}`);
-        return;
-      }
-
-      // Leer el cuerpo de la respuesta en streaming
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        
-        // El servidor devuelve SSE: event: x\ndata: y\n\n
-        const events = buffer.split('\n\n');
-        buffer = events.pop(); // Dejar el fragmento incompleto en el buffer
-
-        for (const rawEvent of events) {
-          if (!rawEvent.trim()) continue;
-
-          // Parsear las líneas del evento
-          const lines = rawEvent.split('\n');
-          let eventType = '';
-          let eventData = null;
-
-          for (const line of lines) {
-            if (line.startsWith('event:')) {
-              eventType = line.replace('event:', '').trim();
-            } else if (line.startsWith('data:')) {
-              try {
-                eventData = JSON.parse(line.replace('data:', '').trim());
-              } catch (e) {
-                // Error al parsear JSON
-              }
-            }
-          }
-
-          // Procesar el evento
-          if (eventType && eventData) {
-            if (eventType === 'status') {
-              writeToTerminal('status', `[STATUS] ${eventData.msg}`);
-            } else if (eventType === 'stdout') {
-              writeToTerminal('stdout', eventData.text);
-            } else if (eventType === 'stderr') {
-              writeToTerminal('stderr', eventData.text);
-            } else if (eventType === 'done') {
-              terminalStatus.textContent = `Finalizado (Código ${eventData.code})`;
-              
-              // Si el script generó imágenes nuevas, cargarlas en la UI
-              if (eventData.files && eventData.files.length > 0) {
-                const latestFile = eventData.files[0];
-                writeToTerminal('system', `Imagen autogenerada detectada: ${latestFile.name}`);
-                
-                // Recargar historial y auto-seleccionar la última comparación (que estará de primera)
-                loadHistoryList(true);
-              }
-            }
-          }
-        }
-      }
-
-    } catch (e) {
-      writeToTerminal('stderr', `Fallo crítico de conexión: ${e.message}`);
-      terminalStatus.textContent = 'Error de conexión';
-    }
-  }
-
   // Evaluar imágenes actuales en el visualizador
   async function reEvaluateCurrentState() {
     if (!state.baselineUrl || !state.currentUrl) return;
@@ -810,6 +1059,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // ==========================================
 
   function writeToTerminal(type, text) {
+    console.log(`[${type}] ${text}`);
+    if (!terminalConsole) return;
+    
     const line = document.createElement('div');
     line.className = `terminal-line ${type === 'prompt' ? 'prompt-line' : type + '-msg'}`;
     
@@ -830,10 +1082,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Limpiar terminal
-  btnClearTerminal.addEventListener('click', () => {
-    terminalConsole.innerHTML = '';
-    writeToTerminal('system', 'Terminal limpia.');
-  });
+  if (btnClearTerminal) {
+    btnClearTerminal.addEventListener('click', () => {
+      if (terminalConsole) terminalConsole.innerHTML = '';
+      writeToTerminal('system', 'Terminal limpia.');
+    });
+  }
 
 
   // Ping de salud del servidor
@@ -857,15 +1111,159 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
 
+  // ==========================================
+  // 11.5 MANEJO DE HERRAMIENTAS DE ANOTACIÓN
+  // ==========================================
+
+  // Seleccionar herramienta
+  toolBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      toolBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.activeTool = btn.dataset.tool;
+      updateCursor();
+      writeToTerminal('system', `Herramienta de dibujo cambiada a: ${state.activeTool}`);
+    });
+  });
+
+  // Cambiar grosor
+  if (selectThickness) {
+    selectThickness.addEventListener('change', (e) => {
+      state.annotationThickness = parseInt(e.target.value, 10);
+      writeToTerminal('system', `Grosor de línea de marca cambiado a: ${state.annotationThickness}px`);
+    });
+  }
+
+  // Seleccionar color
+  annotColorDots.forEach(dot => {
+    dot.addEventListener('click', () => {
+      annotColorDots.forEach(d => d.classList.remove('active'));
+      dot.classList.add('active');
+      state.annotationColor = dot.dataset.color;
+      writeToTerminal('system', `Color de marca cambiado a: ${state.annotationColor}`);
+    });
+  });
+
+  // Deshacer (Undo)
+  if (btnUndoAnnot) {
+    btnUndoAnnot.addEventListener('click', () => {
+      if (state.annotations.length > 0) {
+        state.annotations.pop();
+        redrawAllCanvases();
+        writeToTerminal('system', 'Última marca deshecha.');
+      } else {
+        writeToTerminal('system', 'No hay marcas para deshacer.');
+      }
+    });
+  }
+
+  // Borrar Todo (Clear)
+  if (btnClearAnnot) {
+    btnClearAnnot.addEventListener('click', () => {
+      if (state.annotations.length > 0) {
+        state.annotations = [];
+        redrawAllCanvases();
+        writeToTerminal('system', 'Todas las marcas han sido eliminadas.');
+      } else {
+        writeToTerminal('system', 'No hay marcas para borrar.');
+      }
+    });
+  }
+
+  // Descargar Comparativa Enfrentada (Side-by-Side)
+  if (btnDownloadConfronted) {
+    btnDownloadConfronted.addEventListener('click', () => {
+      if (!state.baselineUrl || !state.currentUrl) {
+        writeToTerminal('stderr', 'No hay imágenes cargadas para exportar.');
+        return;
+      }
+      
+      const imgBase = imgBaseSbs;
+      const imgCurrent = imgCurrentSbs;
+      
+      if (!imgBase.complete || !imgCurrent.complete || imgBase.naturalWidth === 0) {
+        writeToTerminal('stderr', 'Las imágenes aún no se han cargado por completo.');
+        return;
+      }
+      
+      try {
+        const w = imgBase.naturalWidth;
+        const h = imgBase.naturalHeight;
+        const gap = 20; // 20px de separación visual
+        
+        // Crear un canvas en memoria
+        const exportCanvas = document.createElement('canvas');
+        exportCanvas.width = w * 2 + gap;
+        
+        // Encabezado para colocar las etiquetas "BASE (V1)" y "CURRENT (V2)"
+        const headerHeight = 60;
+        exportCanvas.height = h + headerHeight;
+        
+        const ctx = exportCanvas.getContext('2d');
+        
+        // Fondo oscuro premium del canvas (a juego con el visualizador de Vyú)
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+        
+        // 1. Dibujar el encabezado izquierdo (BASE)
+        ctx.fillStyle = '#818cf8'; // Color indigo
+        ctx.font = 'bold 20px sans-serif';
+        ctx.fillText('BASE (V1)', 20, 38);
+        
+        // 2. Dibujar el encabezado derecho (CURRENT)
+        ctx.fillStyle = '#f472b6'; // Color rosa/pink
+        ctx.fillText('CURRENT (V2)', w + gap + 20, 38);
+        
+        // Línea divisoria en el encabezado
+        ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, headerHeight - 1);
+        ctx.lineTo(exportCanvas.width, headerHeight - 1);
+        ctx.stroke();
+        
+        // 3. Dibujar las dos imágenes
+        ctx.drawImage(imgBase, 0, headerHeight, w, h);
+        ctx.drawImage(imgCurrent, w + gap, headerHeight, w, h);
+        
+        // 4. Dibujar las marcas en el lado izquierdo (Base)
+        ctx.save();
+        ctx.translate(0, headerHeight);
+        state.annotations.forEach(shape => {
+          drawShape(ctx, shape);
+        });
+        ctx.restore();
+        
+        // 5. Dibujar las marcas en el lado derecho (Current)
+        ctx.save();
+        ctx.translate(w + gap, headerHeight);
+        state.annotations.forEach(shape => {
+          drawShape(ctx, shape);
+        });
+        ctx.restore();
+        
+        // 6. Exportar y descargar
+        const dataUrl = exportCanvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.download = `comparativa-enfrentada-${Date.now()}.png`;
+        link.href = dataUrl;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        writeToTerminal('stdout', 'Comparativa enfrentada generada y descargada con éxito.');
+      } catch (err) {
+        writeToTerminal('stderr', `Error al exportar la comparativa: ${err.message}`);
+      }
+    });
+  }
+
 
   // ==========================================
   // 12. INICIALIZACIÓN
   // ==========================================
   
-  // 1. Cargar scripts disponibles al abrir
-  loadScriptsList();
-
-  // 2. Cargar historial de diffs
+  // 1. Cargar historial de diffs
   loadHistoryList();
 
   // 3. Iniciar ping de salud constante

@@ -72,30 +72,63 @@
           </button>
         </div>
 
-        <!-- Sección 2.5: Historial de Diffs -->
+        <!-- Sección 2: Parámetros de Pixelmatch -->
+        <div class="sidebar-section glass-panel">
+          <h3>Parámetros de Ajuste</h3>
+          <p class="section-desc">Personaliza el motor de comparación pixelmatch.</p>
+
+          <div class="parameter-group">
+            <div class="parameter-header">
+              <label for="range-threshold">Sensibilidad (Threshold)</label>
+              <span class="parameter-value" id="val-threshold">0.10</span>
+            </div>
+            <input type="range" id="range-threshold" min="0.0" max="1.0" step="0.01" value="0.10" class="slider-range">
+            <span class="parameter-tip">Un valor menor (ej. 0.05) hace la comparación más estricta a variaciones de
+              color. Un valor mayor la hace más tolerante.</span>
+          </div>
+
+          <div class="parameter-group checkbox-group">
+            <label class="checkbox-container">
+              <input type="checkbox" id="chk-include-aa">
+              <span class="checkmark"></span>
+              <span class="checkbox-label">Ignorar Anti-Aliasing (Suavizado)</span>
+            </label>
+            <span class="parameter-tip">Evita falsos positivos causados por el suavizado de bordes en fuentes de texto o
+              gráficos curvos.</span>
+          </div>
+
+          <div class="parameter-group">
+            <label>Color de Diferencia (Diff)</label>
+            <div class="color-options-grid">
+              <button class="color-dot active" style="background-color: #ff003c" data-color="[255,0,60]"
+                title="Rojo Neón"></button>
+              <button class="color-dot" style="background-color: #e000ff" data-color="[224,0,255]"
+                title="Fucsia"></button>
+              <button class="color-dot" style="background-color: #ffcc00" data-color="[255,204,0]"
+                title="Amarillo"></button>
+              <button class="color-dot" style="background-color: #a855f7" data-color="[168,85,247]"
+                title="Violeta"></button>
+              <button class="color-dot" style="background-color: #00f0ff" data-color="[0,240,255]"
+                title="Cian"></button>
+            </div>
+          </div>
+
+          <button id="btn-recompare" class="btn btn-primary btn-full mt-10">
+            <span>Actualizar PixelMatch</span>
+          </button>
+        </div>
+
+        <!-- Sección 3: Historial de Diffs -->
         <div class="sidebar-section glass-panel" id="section-history"
-          style="max-height: 250px; display: flex; flex-direction: column;">
+          style="display: flex; flex-direction: column;">
           <h3>Historial de Diffs</h3>
           <p class="section-desc">Historial de comparaciones procesadas en el servidor.</p>
           <div class="history-list" id="history-container"
-            style="overflow-y: auto; display: flex; flex-direction: column; gap: 8px; flex: 1; max-height: 150px; padding-right: 4px;">
+            style="display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
             <p class="section-desc" style="text-align: center; color: #475569; padding: 10px;">Ninguna comparación
               previa.</p>
           </div>
         </div>
-
-        <!-- Sección 3: Gestor de Scripts de Node.js -->
-        <div class="sidebar-section glass-panel">
-          <h3>Scripts de Comparación</h3>
-          <p class="section-desc">Scripts de Javascript (.js) en la carpeta <code>scripts/</code>.</p>
-          <div class="scripts-list" id="scripts-container">
-            <div class="loading-spinner-wrapper">
-              <span class="spinner"></span>
-              <span>Buscando scripts locales...</span>
-            </div>
-          </div>
-        </div>
-
       </aside>
 
       <!-- ÁREA CENTRAL: Espacio de Trabajo Visual (Visualizer) -->
@@ -104,14 +137,27 @@
         <!-- Pestañas de Modos de Visualización -->
         <div class="view-tabs-bar glass-panel">
           <div class="tabs-group">
-            <button class="tab-btn active" data-tab="side-by-side">
-              <span class="tab-icon">📐</span> Side-by-Side
+            <button class="tab-btn active" data-tab="side-by-side" title="Side-by-Side">
+              <span class="tab-icon">📐</span> <span class="tab-text">Side-by-Side</span>
             </button>
-            <button class="tab-btn" data-tab="split-slider">
-              <span class="tab-icon">↔️</span> Split Slider
+            <button class="tab-btn" data-tab="split-slider" title="Split Slider">
+              <span class="tab-icon">↔️</span> <span class="tab-text">Split Slider</span>
             </button>
-            <button class="tab-btn" data-tab="opacity-overlay">
-              <span class="tab-icon">🌓</span> Opacity Overlay
+            <button class="tab-btn" data-tab="opacity-overlay" title="Opacity Overlay">
+              <span class="tab-icon">🌓</span> <span class="tab-text">Opacity Overlay</span>
+            </button>
+          </div>
+
+          <!-- Controles de Acción de Anotación (Deshacer, Borrar, Descargar) -->
+          <div class="action-controls-group" id="action-controls-group" style="display: none; align-items: center; gap: 8px; margin-left: auto; margin-right: 15px;">
+            <button id="btn-undo-annot" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.75rem;" title="Deshacer última marca">
+              <span>↩️</span> <span class="btn-text">Deshacer</span>
+            </button>
+            <button id="btn-clear-annot" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.75rem;" title="Borrar todas las marcas">
+              <span>🗑️</span> <span class="btn-text">Borrar Todo</span>
+            </button>
+            <button id="btn-download-confronted" class="btn btn-primary" style="padding: 6px 12px; font-size: 0.75rem;" title="Descargar imágenes enfrentadas con marcas">
+              <span>💾</span> <span class="btn-text">Descargar Comparativa</span>
             </button>
           </div>
 
@@ -121,6 +167,56 @@
               <span>Restaurar</span>
             </button>
             <div class="zoom-info">Zoom: <span id="zoom-value">100%</span></div>
+          </div>
+        </div>
+
+        <!-- Barra de Herramientas de Anotación (Floating/Sticky under tabs) -->
+        <div class="annotation-toolbar glass-panel" id="annotation-toolbar" style="display: none; margin-top: -5px; margin-bottom: 5px;">
+          <div class="toolbar-group">
+            <span class="toolbar-label">Marcas:</span>
+            <button class="tool-btn active" id="tool-pan" data-tool="pan" title="Mover / Navegación (Mantén Espacio para mover)">
+              <span class="tool-icon">✋</span> <span class="tool-btn-text">Mover</span>
+            </button>
+            <button class="tool-btn" id="tool-pencil" data-tool="pencil" title="Lápiz (Mano Alzada)">
+              <span class="tool-icon">✏️</span> <span class="tool-btn-text">Lápiz</span>
+            </button>
+            <button class="tool-btn" id="tool-rect" data-tool="rect" title="Rectángulo (Cuadrado)">
+              <span class="tool-icon">⬜</span> <span class="tool-btn-text">Rectángulo</span>
+            </button>
+            <button class="tool-btn" id="tool-circle" data-tool="circle" title="Círculo (Redondear)">
+              <span class="tool-icon">⭕</span> <span class="tool-btn-text">Círculo</span>
+            </button>
+            <button class="tool-btn" id="tool-text" data-tool="text" title="Nota de Texto (Haz clic para escribir)">
+              <span class="tool-icon">💬</span> <span class="tool-btn-text">Nota</span>
+            </button>
+            <button class="tool-btn" id="tool-eraser" data-tool="eraser" title="Borrador (Haz clic en una marca para eliminarla)">
+              <span class="tool-icon">🧽</span> <span class="tool-btn-text">Borrador</span>
+            </button>
+          </div>
+          
+          <div class="toolbar-separator"></div>
+          
+          <div class="toolbar-group">
+            <span class="toolbar-label">Grosor:</span>
+            <select id="select-thickness" class="toolbar-select">
+              <option value="2">Fino (2px)</option>
+              <option value="4" selected>Medio (4px)</option>
+              <option value="8">Grueso (8px)</option>
+              <option value="12">Muy Grueso (12px)</option>
+            </select>
+          </div>
+          
+          <div class="toolbar-separator"></div>
+          
+          <div class="toolbar-group">
+            <span class="toolbar-label">Color:</span>
+            <div class="annotation-colors">
+              <button class="annot-color-dot active" style="background-color: #ff003c" data-color="#ff003c" title="Rojo"></button>
+              <button class="annot-color-dot" style="background-color: #10b981" data-color="#10b981" title="Verde"></button>
+              <button class="annot-color-dot" style="background-color: #ffcc00" data-color="#ffcc00" title="Amarillo"></button>
+              <button class="annot-color-dot" style="background-color: #00f0ff" data-color="#00f0ff" title="Cian"></button>
+              <button class="annot-color-dot" style="background-color: #a855f7" data-color="#a855f7" title="Violeta"></button>
+            </div>
           </div>
         </div>
 
@@ -137,6 +233,7 @@
               </div>
               <div class="image-wrapper viewport-sync">
                 <img id="img-base-sbs" class="zoomable-img" src="" alt="Sube o selecciona imágenes">
+                <canvas id="canvas-base-sbs" class="annotation-canvas zoomable-img"></canvas>
                 <div class="pixel-info-float" id="pixel-info-base"></div>
               </div>
             </div>
@@ -148,6 +245,7 @@
               </div>
               <div class="image-wrapper viewport-sync">
                 <img id="img-current-sbs" class="zoomable-img" src="" alt="Sube o selecciona imágenes">
+                <canvas id="canvas-current-sbs" class="annotation-canvas zoomable-img"></canvas>
                 <div class="pixel-info-float" id="pixel-info-current"></div>
               </div>
             </div>
@@ -155,16 +253,17 @@
             <div class="viewport-box" id="box-diff">
               <div class="viewport-header"
                 style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                <span class="badge badge-danger">DIFF (DIFERENCIAS)</span>
+                <span class="badge badge-danger"><span class="badge-full-text">DIFF (DIFERENCIAS)</span><span class="badge-short-text">DIFF</span></span>
                 <div style="display: flex; align-items: center; gap: 8px;">
                   <span class="image-dimensions" id="dim-diff">-</span>
                   <a id="btn-download-diff" class="btn btn-secondary"
                     style="padding: 2px 6px; font-size: 0.65rem; height: 22px; display: none; text-decoration: none;"
-                    download="diff.png" href="#">Descargar</a>
+                    download="diff.png" href="#" title="Descargar Imagen de Diferencias">📥 <span class="btn-text">Descargar</span></a>
                 </div>
               </div>
               <div class="image-wrapper viewport-sync">
                 <img id="img-diff-sbs" class="zoomable-img" src="" alt="Genera la diferencia">
+                <canvas id="canvas-diff-sbs" class="annotation-canvas zoomable-img"></canvas>
                 <div class="pixel-info-float" id="pixel-info-diff"></div>
               </div>
             </div>
@@ -239,74 +338,7 @@
 
       </main>
 
-      <!-- COLUMNA DERECHA: Parámetros y Consola de Scripts -->
-      <aside class="sidebar sidebar-right">
 
-        <!-- Sección 1: Parámetros de Pixelmatch -->
-        <div class="sidebar-section glass-panel">
-          <h3>Parámetros de Ajuste</h3>
-          <p class="section-desc">Personaliza el motor de comparación pixelmatch.</p>
-
-          <div class="parameter-group">
-            <div class="parameter-header">
-              <label for="range-threshold">Sensibilidad (Threshold)</label>
-              <span class="parameter-value" id="val-threshold">0.10</span>
-            </div>
-            <input type="range" id="range-threshold" min="0.0" max="1.0" step="0.01" value="0.10" class="slider-range">
-            <span class="parameter-tip">Un valor menor (ej. 0.05) hace la comparación más estricta a variaciones de
-              color. Un valor mayor la hace más tolerante.</span>
-          </div>
-
-          <div class="parameter-group checkbox-group">
-            <label class="checkbox-container">
-              <input type="checkbox" id="chk-include-aa">
-              <span class="checkmark"></span>
-              <span class="checkbox-label">Ignorar Anti-Aliasing (Suavizado)</span>
-            </label>
-            <span class="parameter-tip">Evita falsos positivos causados por el suavizado de bordes en fuentes de texto o
-              gráficos curvos.</span>
-          </div>
-
-          <div class="parameter-group">
-            <label>Color de Diferencia (Diff)</label>
-            <div class="color-options-grid">
-              <button class="color-dot active" style="background-color: #ff003c" data-color="[255,0,60]"
-                title="Rojo Neón"></button>
-              <button class="color-dot" style="background-color: #e000ff" data-color="[224,0,255]"
-                title="Fucsia"></button>
-              <button class="color-dot" style="background-color: #ffcc00" data-color="[255,204,0]"
-                title="Amarillo"></button>
-              <button class="color-dot" style="background-color: #a855f7" data-color="[168,85,247]"
-                title="Violeta"></button>
-              <button class="color-dot" style="background-color: #00f0ff" data-color="[0,240,255]"
-                title="Cian"></button>
-            </div>
-          </div>
-
-          <button id="btn-recompare" class="btn btn-primary btn-full mt-10">
-            <span>Actualizar PixelMatch</span>
-          </button>
-        </div>
-
-        <!-- Sección 2: Consola del Terminal de Ejecución -->
-        <div class="sidebar-section glass-panel terminal-section">
-          <div class="terminal-header">
-            <h3>Consola del Script</h3>
-            <div class="terminal-actions">
-              <button id="btn-clear-terminal" class="btn-terminal-action" title="Limpiar Consola">Limpiar</button>
-            </div>
-          </div>
-          <div class="terminal-body" id="terminal-console">
-            <div class="terminal-line system-msg">> Bienvenido al terminal de ejecución de Vyú.</div>
-            <div class="terminal-line system-msg">> Selecciona un script en el panel izquierdo y haz clic en "Ejecutar
-              Script" para iniciar la automatización.</div>
-          </div>
-          <div class="terminal-footer">
-            <span class="terminal-status" id="terminal-status">Consola lista e inactiva</span>
-          </div>
-        </div>
-
-      </aside>
 
     </div>
 

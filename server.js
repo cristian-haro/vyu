@@ -8,6 +8,58 @@ let pixelmatch = require('pixelmatch');
 if (pixelmatch.default) pixelmatch = pixelmatch.default;
 const PNG = require('pngjs').PNG;
 
+function resizePNG(png, targetWidth, targetHeight) {
+  const newPng = new PNG({ width: targetWidth, height: targetHeight });
+  const w1 = png.width;
+  const h1 = png.height;
+  const w2 = targetWidth;
+  const h2 = targetHeight;
+  
+  const getPixel = (x, y) => {
+    const cx = Math.max(0, Math.min(x, w1 - 1));
+    const cy = Math.max(0, Math.min(y, h1 - 1));
+    const idx = (cy * w1 + cx) * 4;
+    return [
+      png.data[idx],
+      png.data[idx + 1],
+      png.data[idx + 2],
+      png.data[idx + 3]
+    ];
+  };
+
+  const xRatio = w1 / w2;
+  const yRatio = h1 / h2;
+
+  for (let i = 0; i < h2; i++) {
+    for (let j = 0; j < w2; j++) {
+      const srcX = (j + 0.5) * xRatio - 0.5;
+      const srcY = (i + 0.5) * yRatio - 0.5;
+      
+      const x = Math.floor(srcX);
+      const y = Math.floor(srcY);
+      
+      const xDiff = srcX - x;
+      const yDiff = srcY - y;
+      
+      const p00 = getPixel(x, y);
+      const p10 = getPixel(x + 1, y);
+      const p01 = getPixel(x, y + 1);
+      const p11 = getPixel(x + 1, y + 1);
+      
+      const dstIdx = (i * w2 + j) * 4;
+      for (let c = 0; c < 4; c++) {
+        const val = p00[c] * (1 - xDiff) * (1 - yDiff) +
+                    p10[c] * xDiff * (1 - yDiff) +
+                    p01[c] * (1 - xDiff) * yDiff +
+                    p11[c] * xDiff * yDiff;
+        newPng.data[dstIdx + c] = Math.round(val);
+      }
+    }
+  }
+  
+  return newPng;
+}
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -256,15 +308,14 @@ app.post('/api/compare', upload.fields([
 
     // Leer imágenes PNG
     const img1 = PNG.sync.read(fs.readFileSync(baselinePath));
-    const img2 = PNG.sync.read(fs.readFileSync(currentPath));
+    let img2 = PNG.sync.read(fs.readFileSync(currentPath));
 
     const { width, height } = img1;
     
-    // Validar que tengan las mismas dimensiones
+    // Redimensionar la imagen Current si las dimensiones no coinciden
     if (width !== img2.width || height !== img2.height) {
-      return res.status(400).json({ 
-        error: `Las dimensiones de las imágenes no coinciden. Baseline: ${width}x${height}, Current: ${img2.width}x${img2.height}` 
-      });
+      console.log(`[RESIZE] Las dimensiones no coinciden. Redimensionando Current de ${img2.width}x${img2.height} a ${width}x${height}`);
+      img2 = resizePNG(img2, width, height);
     }
 
     const diff = new PNG({ width, height });

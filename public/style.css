@@ -80,6 +80,8 @@ body {
 .badge-pink { background-color: rgba(236, 72, 153, 0.2); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.3); }
 .badge-danger { background-color: rgba(255, 0, 60, 0.15); color: #ff5577; border: 1px solid rgba(255, 0, 60, 0.25); }
 .badge-success { background-color: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.25); }
+.badge-short-text { display: none; }
+.tab-text { display: inline-block; }
 
 .mt-10 { margin-top: 10px; }
 .btn-full { width: 100%; }
@@ -103,7 +105,7 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  width: 100vw;
+  width: 100%;
 }
 
 /* HEADER */
@@ -185,10 +187,10 @@ body {
 .app-body {
   flex: 1;
   display: grid;
-  grid-template-columns: 290px 1fr 310px;
+  grid-template-columns: 320px 1fr;
   gap: 15px;
   padding: 15px;
-  height: calc(100vh - 65px);
+  height: calc(100vh - 70px);
   overflow: hidden;
 }
 
@@ -199,6 +201,8 @@ body {
   gap: 15px;
   overflow-y: auto;
   padding-right: 2px;
+  height: 100%;
+  min-height: 0;
 }
 
 .sidebar-section {
@@ -1082,4 +1086,289 @@ body {
 }
 .text-pass { color: var(--success); }
 .text-fail { color: var(--danger); }
+
+/* ==========================================================================
+   BARRA DE ANOTACIONES E INTERFAZ DE DIBUJO
+   ========================================================================== */
+.annotation-toolbar {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 0 15px;
+  background: rgba(15, 23, 42, 0.4);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  animation: slideDown 0.3s ease-out;
+  flex-shrink: 0;
+  z-index: 30;
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbar-label {
+  font-family: var(--font-display);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.tool-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 5px 10px;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #94a3b8;
+  cursor: pointer;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: var(--transition-smooth);
+}
+.tool-btn:hover {
+  color: #f1f5f9;
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+.tool-btn.active {
+  color: var(--indigo);
+  background: rgba(99, 102, 241, 0.1);
+  border-color: rgba(99, 102, 241, 0.25);
+  box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.1);
+}
+
+.tool-icon {
+  font-size: 0.85rem;
+}
+
+.toolbar-separator {
+  width: 1px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.toolbar-select {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #cbd5e1;
+  font-size: 0.72rem;
+  padding: 4px 8px;
+  outline: none;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  transition: var(--transition-smooth);
+}
+.toolbar-select:focus {
+  border-color: var(--indigo);
+}
+
+.annotation-colors {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.annot-color-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid #000;
+  cursor: pointer;
+  outline: none;
+  transition: var(--transition-smooth);
+  box-shadow: 0 0 3px rgba(0,0,0,0.5);
+}
+.annot-color-dot:hover {
+  transform: scale(1.15);
+}
+.annot-color-dot.active {
+  transform: scale(1.3);
+  border-color: #fff;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.4);
+}
+
+/* Lienzo de Anotación */
+.annotation-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: auto;
+  pointer-events: none; /* Dejamos que los eventos se controlen en el contenedor o se habiliten si es necesario */
+  z-index: 5;
+  image-rendering: pixelated;
+}
+
+/* Caja de entrada de texto inline de anotaciones */
+.annotation-inline-input {
+  position: absolute;
+  background: #0f172a;
+  border: 1px solid var(--indigo);
+  border-radius: 6px;
+  color: #fff;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  padding: 5px 10px;
+  outline: none;
+  z-index: 100;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6), 0 0 10px rgba(99, 102, 241, 0.2);
+  width: 180px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.annotation-inline-input:focus {
+  border-color: var(--pink);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6), 0 0 12px rgba(236, 72, 153, 0.3);
+}
+
+/* ==========================================================================
+   DISEÑO RESPONSIVO (MEDIA QUERIES)
+   ========================================================================== */
+
+/* Pantallas medianas (Portátiles y laptops estándar) */
+@media (max-width: 1350px) {
+  .tool-btn-text {
+    display: none; /* Oculta las etiquetas de texto de las herramientas de marca */
+  }
+  .tool-btn {
+    padding: 6px 8px; /* Ajusta el padding de los botones */
+  }
+}
+
+/* Pantallas de laptops pequeñas y tablets */
+@media (max-width: 1366px) {
+  .app-body {
+    grid-template-columns: 260px 1fr; /* Estrecha la barra lateral */
+    gap: 10px;
+    padding: 10px;
+  }
+  
+  .annotation-toolbar {
+    height: auto;
+    min-height: 48px;
+    flex-wrap: wrap; /* Habilita el salto de línea para evitar desbordes */
+    padding: 8px 12px;
+    gap: 8px 12px;
+  }
+  
+  .toolbar-separator {
+    display: none !important; /* Oculta los separadores decorativos para compactar */
+  }
+  
+  /* Quita el empuje a la derecha del botón de descarga para alinearlo en el flujo */
+  .separator-push {
+    display: none !important;
+  }
+  
+  .annotation-toolbar .toolbar-group:last-child {
+    margin-left: 0;
+  }
+  
+  /* Compactar cabeceras de los visores para evitar desbordes */
+  .viewport-header {
+    padding: 0 8px;
+  }
+  .viewport-header .image-dimensions {
+    display: none !important; /* Oculta las dimensiones para ahorrar espacio horizontal */
+  }
+  .viewport-header .btn-text {
+    display: none !important; /* Oculta el texto 'Descargar' en el botón del diff */
+  }
+  .badge-full-text {
+    display: none;
+  }
+  .badge-short-text {
+    display: inline;
+  }
+
+  /* Ocultar etiquetas de texto de pestañas para evitar desbordar el workspace */
+  .tab-text {
+    display: none !important;
+  }
+  .tab-btn {
+    padding: 8px 12px;
+    gap: 4px;
+  }
+
+  /* Compactar barra de métricas inferior */
+  .comparison-summary-bar {
+    justify-content: space-between;
+    padding: 0 10px;
+    gap: 8px;
+  }
+  .metric-label {
+    font-size: 0.7rem;
+  }
+  .metric-value {
+    font-size: 0.75rem;
+  }
+
+  /* Compactar los botones de acción en la barra superior */
+  #action-controls-group .btn-text {
+    display: none !important;
+  }
+  #action-controls-group {
+    margin-right: 8px !important;
+  }
+  #action-controls-group .btn {
+    padding: 6px 10px !important;
+  }
+}
+
+/* Tablets en modo vertical / Ventanas estrechas */
+@media (max-width: 900px) {
+  #mode-side-by-side.active {
+    grid-template-columns: 1fr; /* Apila las 3 imágenes verticalmente */
+    grid-template-rows: repeat(3, 300px); /* Asigna un alto proporcional */
+    overflow-y: auto;
+  }
+  
+  .viewport-box {
+    height: 100%;
+  }
+
+  /* Apilar métricas verticalmente en pantallas muy pequeñas */
+  .comparison-summary-bar {
+    height: auto;
+    flex-direction: column;
+    padding: 10px;
+    gap: 6px;
+    align-items: center;
+  }
+}
+
+/* Dispositivos Móviles (Teléfonos) */
+@media (max-width: 768px) {
+  .app-body {
+    grid-template-columns: 1fr; /* Apilado vertical del sidebar y visualizador */
+    grid-template-rows: auto 1fr;
+    height: calc(100vh - 70px);
+    overflow-y: auto;
+  }
+  
+  .sidebar {
+    height: auto;
+    overflow-y: visible;
+  }
+  
+  .visualizer-workspace {
+    height: 650px; /* Altura fija para el comparador en móvil */
+  }
+}
 
