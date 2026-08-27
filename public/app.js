@@ -210,11 +210,20 @@ document.addEventListener('DOMContentLoaded', () => {
     isComparing: false,
 
     // Estado de Anotaciones
-    activeTool: 'pan', // 'pan', 'pencil', 'rect', 'circle'
+    activeTool: 'pan', // 'pan', 'select', 'pencil', 'rect', 'circle', 'text', 'eraser'
     annotationColor: '#ff003c',
     annotationThickness: 4,
     annotations: [],
+    selectedShape: null,
     isDrawing: false,
+    isDraggingShape: false,
+    dragShapeStartX: 0,
+    dragShapeStartY: 0,
+    drawStartX: 0,
+    drawStartY: 0,
+    shapeOrigX: 0,
+    shapeOrigY: 0,
+    shapeOrigPoints: null,
     currentShape: null
   };
 
@@ -285,6 +294,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const nameCurrent = document.getElementById('name-current');
   const zoneBaseline = document.getElementById('zone-baseline');
   const zoneCurrent = document.getElementById('zone-current');
+  const btnSwapImages = document.getElementById('btn-swap-images');
   const btnQuickCompare = document.getElementById('btn-quick-compare');
   const historyContainer = document.getElementById('history-container');
   const btnDownloadDiff = document.getElementById('btn-download-diff');
@@ -302,10 +312,33 @@ document.addEventListener('DOMContentLoaded', () => {
   let isSpacePressed = false;
 
   window.addEventListener('keydown', (e) => {
-    // Si el usuario está interactuando con una entrada de texto, no interferir con la barra espaciadora
+    // Si el usuario está interactuando con una entrada de texto o textarea
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
       return;
     }
+
+    // Supr o Backspace para borrar marca seleccionada
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (state.selectedShape) {
+        const idx = state.annotations.indexOf(state.selectedShape);
+        if (idx !== -1) {
+          state.annotations.splice(idx, 1);
+          state.selectedShape = null;
+          redrawAllCanvases();
+          writeToTerminal('system', 'Marca seleccionada eliminada.');
+        }
+        e.preventDefault();
+      }
+    }
+
+    // Ctrl+Z para deshacer
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+      if (state.annotations.length > 0) {
+        btnUndoAnnot.click();
+        e.preventDefault();
+      }
+    }
+
     if (e.code === 'Space') {
       isSpacePressed = true;
       if (state.activeTool !== 'pan') {
@@ -326,6 +359,8 @@ document.addEventListener('DOMContentLoaded', () => {
     viewportsSync.forEach(viewport => {
       if (state.activeTool === 'pan' || isSpacePressed) {
         viewport.style.cursor = 'grab';
+      } else if (state.activeTool === 'select') {
+        viewport.style.cursor = 'default';
       } else if (state.activeTool === 'eraser') {
         viewport.style.cursor = 'pointer';
       } else {
@@ -363,7 +398,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Dibujar una forma individual
-  function drawShape(ctx, shape) {
+  function drawShape(ctx, shape, isSelected = false) {
     ctx.strokeStyle = shape.color;
     ctx.lineWidth = shape.thickness;
     ctx.lineCap = 'round';
@@ -373,22 +408,36 @@ document.addEventListener('DOMContentLoaded', () => {
     ctx.shadowColor = shape.color;
     ctx.shadowBlur = 6;
     
+    let bbox = null;
+
     if (shape.type === 'pencil') {
       if (shape.points.length < 2) return;
       ctx.beginPath();
       ctx.moveTo(shape.points[0].x, shape.points[0].y);
+      let minX = shape.points[0].x, maxX = shape.points[0].x, minY = shape.points[0].y, maxY = shape.points[0].y;
       for (let i = 1; i < shape.points.length; i++) {
         ctx.lineTo(shape.points[i].x, shape.points[i].y);
+        minX = Math.min(minX, shape.points[i].x);
+        maxX = Math.max(maxX, shape.points[i].x);
+        minY = Math.min(minY, shape.points[i].y);
+        maxY = Math.max(maxY, shape.points[i].y);
       }
       ctx.stroke();
+      bbox = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
     } else if (shape.type === 'rect') {
+      const rx = Math.min(shape.x, shape.x + shape.w);
+      const ry = Math.min(shape.y, shape.y + shape.h);
+      const rw = Math.abs(shape.w);
+      const rh = Math.abs(shape.h);
       ctx.beginPath();
-      ctx.rect(shape.x, shape.y, shape.w, shape.h);
+      ctx.rect(rx, ry, rw, rh);
       ctx.stroke();
+      bbox = { x: rx, y: ry, w: rw, h: rh };
     } else if (shape.type === 'circle') {
       ctx.beginPath();
-      ctx.arc(shape.x, shape.y, shape.r, 0, 2 * Math.PI);
+      ctx.arc(shape.x, shape.y, Math.max(0, shape.r), 0, 2 * Math.PI);
       ctx.stroke();
+      bbox = { x: shape.x - shape.r, y: shape.y - shape.r, w: shape.r * 2, h: shape.r * 2 };
     } else if (shape.type === 'text') {
       // Dibujar punto de anclaje
       ctx.beginPath();
@@ -397,11 +446,9 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.fill();
       
       // Dibujar caja de fondo y texto
-      // Escalamos el tamaño de fuente para que sea muy legible en imágenes de alta resolución
       const fontSize = Math.max(16, shape.thickness * 8);
       ctx.font = `bold ${fontSize}px sans-serif`;
       
-      // Medir ancho
       const textWidth = ctx.measureText(shape.text).width;
       const textHeight = fontSize;
       const padding = Math.max(6, fontSize * 0.35);
@@ -411,8 +458,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const boxW = textWidth + padding * 2;
       const boxH = textHeight + padding * 2;
       
-      // Dibujar la caja de fondo
-      ctx.shadowBlur = 0; // Desactivar glow para bordes nítidos de texto
+      ctx.shadowBlur = 0;
       ctx.beginPath();
       if (ctx.roundRect) {
         ctx.roundRect(boxX, boxY, boxW, boxH, 6);
@@ -425,10 +471,31 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.lineWidth = Math.max(1.5, shape.thickness * 0.4);
       ctx.stroke();
       
-      // Dibujar texto
       ctx.fillStyle = '#ffffff';
       ctx.textBaseline = 'middle';
       ctx.fillText(shape.text, boxX + padding, boxY + boxH / 2);
+
+      bbox = { x: Math.min(shape.x - 4, boxX), y: Math.min(shape.y - 4, boxY), w: Math.max(boxX + boxW - shape.x + 8, boxW + 10), h: Math.max(boxH, 20) };
+    }
+
+    // Dibujar recuadro de selección visual interactivo
+    if (isSelected && bbox) {
+      ctx.save();
+      ctx.shadowBlur = 0;
+      ctx.setLineDash([5, 5]);
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2;
+      const pad = 6;
+      ctx.strokeRect(bbox.x - pad, bbox.y - pad, bbox.w + pad * 2, bbox.h + pad * 2);
+
+      // 4 manijas en las esquinas
+      ctx.fillStyle = '#38bdf8';
+      const handleSize = 6;
+      ctx.fillRect(bbox.x - pad - handleSize / 2, bbox.y - pad - handleSize / 2, handleSize, handleSize);
+      ctx.fillRect(bbox.x + bbox.w + pad - handleSize / 2, bbox.y - pad - handleSize / 2, handleSize, handleSize);
+      ctx.fillRect(bbox.x - pad - handleSize / 2, bbox.y + bbox.h + pad - handleSize / 2, handleSize, handleSize);
+      ctx.fillRect(bbox.x + bbox.w + pad - handleSize / 2, bbox.y + bbox.h + pad - handleSize / 2, handleSize, handleSize);
+      ctx.restore();
     }
   }
 
@@ -445,24 +512,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Comprobar si el clic está sobre una forma dada
   function checkShapeHit(shape, x, y) {
-    const threshold = Math.max(shape.thickness + 6, 12);
+    const threshold = Math.max(shape.thickness + 8, 14);
     
     if (shape.type === 'circle') {
       const dist = Math.sqrt((x - shape.x)**2 + (y - shape.y)**2);
-      return Math.abs(dist - shape.r) <= threshold;
+      return dist <= shape.r + threshold;
     }
     
     if (shape.type === 'rect') {
-      const left = Math.min(shape.x, shape.x + shape.w);
-      const right = Math.max(shape.x, shape.x + shape.w);
-      const top = Math.min(shape.y, shape.y + shape.h);
-      const bottom = Math.max(shape.y, shape.y + shape.h);
-      
-      const hitLeft = Math.abs(x - left) <= threshold && y >= top - threshold && y <= bottom + threshold;
-      const hitRight = Math.abs(x - right) <= threshold && y >= top - threshold && y <= bottom + threshold;
-      const hitTop = Math.abs(y - top) <= threshold && x >= left - threshold && x <= right + threshold;
-      const hitBottom = Math.abs(y - bottom) <= threshold && x >= left - threshold && x <= right + threshold;
-      return hitLeft || hitRight || hitTop || hitBottom;
+      const left = Math.min(shape.x, shape.x + shape.w) - threshold;
+      const right = Math.max(shape.x, shape.x + shape.w) + threshold;
+      const top = Math.min(shape.y, shape.y + shape.h) - threshold;
+      const bottom = Math.max(shape.y, shape.y + shape.h) + threshold;
+      return x >= left && x <= right && y >= top && y <= bottom;
     }
     
     if (shape.type === 'pencil') {
@@ -485,7 +547,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const boxW = textWidth + padding * 2;
       const boxH = textHeight + padding * 2;
       
-      const hitBox = x >= boxX && x <= boxX + boxW && y >= boxY && y <= boxY + boxH;
+      const hitBox = x >= boxX - threshold && x <= boxX + boxW + threshold && y >= boxY - threshold && y <= boxY + boxH + threshold;
       const distAnchor = Math.sqrt((x - shape.x)**2 + (y - shape.y)**2);
       const hitAnchor = distAnchor <= threshold;
       
@@ -503,7 +565,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       state.annotations.forEach(shape => {
-        drawShape(ctx, shape);
+        const isSelected = (state.selectedShape === shape);
+        drawShape(ctx, shape, isSelected);
       });
     });
   }
@@ -533,7 +596,7 @@ document.addEventListener('DOMContentLoaded', () => {
       applyTransformations();
     });
 
-    // Paneo con el click del mouse (Arrastrar), dibujo o borrado si está activo
+    // Paneo con el click del mouse (Arrastrar), dibujo, selección o borrado
     viewport.addEventListener('mousedown', (e) => {
       const img = viewport.querySelector('img');
       if (!img || !img.src || img.naturalWidth === 0) return;
@@ -550,11 +613,39 @@ document.addEventListener('DOMContentLoaded', () => {
         const clickX = ((e.clientX - rect.left) / rect.width) * img.naturalWidth;
         const clickY = ((e.clientY - rect.top) / rect.height) * img.naturalHeight;
 
-        if (state.activeTool === 'eraser') {
+        if (state.activeTool === 'select') {
+          // Modo Selección y Mover Marcas
+          let hit = null;
+          for (let i = state.annotations.length - 1; i >= 0; i--) {
+            if (checkShapeHit(state.annotations[i], clickX, clickY)) {
+              hit = state.annotations[i];
+              break;
+            }
+          }
+
+          if (hit) {
+            state.selectedShape = hit;
+            state.isDraggingShape = true;
+            state.dragShapeStartX = clickX;
+            state.dragShapeStartY = clickY;
+            state.shapeOrigX = hit.x;
+            state.shapeOrigY = hit.y;
+            if (hit.type === 'pencil') {
+              state.shapeOrigPoints = hit.points.map(p => ({ ...p }));
+            }
+            redrawAllCanvases();
+            writeToTerminal('system', `Forma seleccionada (${hit.type}). Arrástrala para moverla o presiona Supr para borrarla.`);
+          } else {
+            state.selectedShape = null;
+            state.isDraggingShape = false;
+            redrawAllCanvases();
+          }
+        } else if (state.activeTool === 'eraser') {
           // Modo Borrador: eliminar la marca clicada
           for (let i = state.annotations.length - 1; i >= 0; i--) {
             if (checkShapeHit(state.annotations[i], clickX, clickY)) {
-              state.annotations.splice(i, 1);
+              const removed = state.annotations.splice(i, 1)[0];
+              if (state.selectedShape === removed) state.selectedShape = null;
               redrawAllCanvases();
               writeToTerminal('system', 'Marca eliminada.');
               break;
@@ -562,7 +653,6 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         } else if (state.activeTool === 'text') {
           // Modo Nota de texto
-          // Si ya hay un input abierto, quitarlo
           const existingInput = document.querySelector('.annotation-inline-input');
           if (existingInput) {
             existingInput.blur();
@@ -586,14 +676,16 @@ document.addEventListener('DOMContentLoaded', () => {
           const saveText = () => {
             const val = input.value.trim();
             if (val) {
-              state.annotations.push({
+              const newShape = {
                 type: 'text',
                 x: clickX,
                 y: clickY,
                 text: val,
                 color: state.annotationColor,
                 thickness: state.annotationThickness
-              });
+              };
+              state.annotations.push(newShape);
+              state.selectedShape = newShape;
               redrawAllCanvases();
               writeToTerminal('system', `Nota añadida: "${val}"`);
             }
@@ -616,8 +708,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 100);
           });
         } else {
-          // Modo Dibujo
+          // Modo Dibujo (Pencil, Rect, Circle)
           state.isDrawing = true;
+          state.drawStartX = clickX;
+          state.drawStartY = clickY;
           
           state.currentShape = {
             type: state.activeTool,
@@ -631,6 +725,7 @@ document.addEventListener('DOMContentLoaded', () => {
             points: [{ x: clickX, y: clickY }]
           };
           
+          state.selectedShape = state.currentShape;
           state.annotations.push(state.currentShape);
         }
       } else {
@@ -649,8 +744,24 @@ document.addEventListener('DOMContentLoaded', () => {
       state.panX = e.clientX - state.startX;
       state.panY = e.clientY - state.startY;
       applyTransformations();
+    } else if (state.isDraggingShape && state.selectedShape) {
+      // Arrastrar marca seleccionada
+      const img = imgBaseSbs;
+      if (!img || !img.src || img.naturalWidth === 0) return;
+      const rect = img.getBoundingClientRect();
+      const curX = ((e.clientX - rect.left) / rect.width) * img.naturalWidth;
+      const curY = ((e.clientY - rect.top) / rect.height) * img.naturalHeight;
+      const dx = curX - state.dragShapeStartX;
+      const dy = curY - state.dragShapeStartY;
+
+      state.selectedShape.x = state.shapeOrigX + dx;
+      state.selectedShape.y = state.shapeOrigY + dy;
+      if (state.selectedShape.type === 'pencil' && state.shapeOrigPoints) {
+        state.selectedShape.points = state.shapeOrigPoints.map(p => ({ x: p.x + dx, y: p.y + dy }));
+      }
+      redrawAllCanvases();
     } else if (state.isDrawing && state.currentShape) {
-      const img = imgBaseSbs; // Usamos el bounding box del base ya que todos están alineados y escalados por igual
+      const img = imgBaseSbs;
       if (!img || !img.src || img.naturalWidth === 0) return;
       
       const rect = img.getBoundingClientRect();
@@ -660,12 +771,18 @@ document.addEventListener('DOMContentLoaded', () => {
       if (state.currentShape.type === 'pencil') {
         state.currentShape.points.push({ x: curX, y: curY });
       } else if (state.currentShape.type === 'rect') {
-        state.currentShape.w = curX - state.currentShape.x;
-        state.currentShape.h = curY - state.currentShape.y;
+        // Generar rectángulo intuitivo en cualquier cuadrante de arrastre
+        state.currentShape.x = Math.min(state.drawStartX, curX);
+        state.currentShape.y = Math.min(state.drawStartY, curY);
+        state.currentShape.w = Math.abs(curX - state.drawStartX);
+        state.currentShape.h = Math.abs(curY - state.drawStartY);
       } else if (state.currentShape.type === 'circle') {
-        const dx = curX - state.currentShape.x;
-        const dy = curY - state.currentShape.y;
-        state.currentShape.r = Math.sqrt(dx * dx + dy * dy);
+        // Generar círculo intuitivo
+        const dx = curX - state.drawStartX;
+        const dy = curY - state.drawStartY;
+        state.currentShape.x = state.drawStartX;
+        state.currentShape.y = state.drawStartY;
+        state.currentShape.r = Math.hypot(dx, dy);
       }
       
       redrawAllCanvases();
@@ -678,8 +795,24 @@ document.addEventListener('DOMContentLoaded', () => {
       if (state.activeViewport) {
         updateCursor();
       }
+    } else if (state.isDraggingShape) {
+      state.isDraggingShape = false;
     } else if (state.isDrawing) {
       state.isDrawing = false;
+      if (state.currentShape) {
+        // Descartar clics accidentales diminutos
+        if (state.currentShape.type === 'rect' && state.currentShape.w < 4 && state.currentShape.h < 4) {
+          state.annotations.pop();
+          state.selectedShape = null;
+        } else if (state.currentShape.type === 'circle' && state.currentShape.r < 3) {
+          state.annotations.pop();
+          state.selectedShape = null;
+        } else if (state.currentShape.type === 'pencil' && state.currentShape.points.length < 2) {
+          state.annotations.pop();
+          state.selectedShape = null;
+        }
+        redrawAllCanvases();
+      }
       state.currentShape = null;
     }
   });
@@ -938,19 +1071,97 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // Intercambiar Baseline y Current (Swap)
+  function swapImages() {
+    if (!state.baselineFile && !state.currentFile && !state.baselineBlob && !state.currentBlob) {
+      writeToTerminal('system', 'No hay imágenes cargadas para intercambiar.');
+      return;
+    }
+
+    const tempFile = state.baselineFile;
+    state.baselineFile = state.currentFile;
+    state.currentFile = tempFile;
+
+    if (state.baselineFile) {
+      nameBaseline.textContent = state.baselineFile.name;
+      nameBaseline.classList.add('loaded');
+      zoneBaseline.style.borderColor = 'var(--indigo)';
+    } else {
+      nameBaseline.textContent = 'Sin archivo';
+      nameBaseline.classList.remove('loaded');
+      zoneBaseline.style.borderColor = '';
+    }
+
+    if (state.currentFile) {
+      nameCurrent.textContent = state.currentFile.name;
+      nameCurrent.classList.add('loaded');
+      zoneCurrent.style.borderColor = 'var(--indigo)';
+    } else {
+      nameCurrent.textContent = 'Sin archivo';
+      nameCurrent.classList.remove('loaded');
+      zoneCurrent.style.borderColor = '';
+    }
+
+    writeToTerminal('system', '⇄ Imágenes intercambiadas (Baseline ⇄ Current).');
+
+    // Si ambas están presentes, re-ejecutar comparación
+    if (state.baselineFile && state.currentFile) {
+      btnQuickCompare.removeAttribute('disabled');
+      btnQuickCompare.click();
+    }
+  }
+
+  if (btnSwapImages) {
+    btnSwapImages.addEventListener('click', swapImages);
+  }
+
+  // Rastreo de zona activa bajo el cursor para pegado contextual
+  let hoveredUploadZone = null;
+  if (zoneBaseline) {
+    zoneBaseline.addEventListener('mouseenter', () => hoveredUploadZone = 'baseline');
+    zoneBaseline.addEventListener('mouseleave', () => { if (hoveredUploadZone === 'baseline') hoveredUploadZone = null; });
+  }
+  if (zoneCurrent) {
+    zoneCurrent.addEventListener('mouseenter', () => hoveredUploadZone = 'current');
+    zoneCurrent.addEventListener('mouseleave', () => { if (hoveredUploadZone === 'current') hoveredUploadZone = null; });
+  }
+
   // Soporte para pegar imágenes desde el portapapeles (Ctrl + V)
   window.addEventListener('paste', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+
     const items = e.clipboardData?.items;
     if (!items) return;
+
     for (const item of items) {
       if (item.type.indexOf('image') !== -1) {
         const file = item.getAsFile();
-        if (!state.baselineFile) {
-          handleFileSelection(file, 'baseline');
-          writeToTerminal('system', 'Imagen pegada desde el portapapeles como Baseline.');
-        } else {
-          handleFileSelection(file, 'current');
-          writeToTerminal('system', 'Imagen pegada desde el portapapeles como Current.');
+        if (!file) continue;
+
+        let targetType = 'baseline';
+        if (hoveredUploadZone) {
+          targetType = hoveredUploadZone;
+        } else if (state.baselineFile && !state.currentFile) {
+          targetType = 'current';
+        } else if (state.baselineFile && state.currentFile) {
+          targetType = 'current';
+        }
+
+        const formattedFile = new File([file], `captura_${targetType}_${Date.now()}.png`, { type: file.type || 'image/png' });
+        handleFileSelection(formattedFile, targetType);
+
+        // Efecto visual de destello en la zona receptora
+        const targetEl = targetType === 'baseline' ? zoneBaseline : zoneCurrent;
+        if (targetEl) {
+          targetEl.classList.remove('paste-highlight');
+          void targetEl.offsetWidth;
+          targetEl.classList.add('paste-highlight');
+        }
+
+        writeToTerminal('system', `📋 Imagen pegada desde portapapeles asignada a: ${targetType.toUpperCase()}`);
+
+        if (state.baselineFile && state.currentFile) {
+          btnQuickCompare.removeAttribute('disabled');
         }
         break;
       }

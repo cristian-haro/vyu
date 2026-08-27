@@ -45,21 +45,28 @@
         <!-- Sección 2: Carga Rápida de Archivos -->
         <div class="sidebar-section glass-panel">
           <h3>Carga Rápida (Quick Compare)</h3>
-          <p class="section-desc">Arrastra o sube dos imágenes PNG locales para compararlas directamente.</p>
+          <p class="section-desc">Arrastra o sube imágenes (PNG, JPG, WebP, SVG) para compararlas.</p>
 
           <div class="upload-zone-wrapper">
             <!-- Zona de Carga 1: Baseline -->
             <div class="upload-zone" id="zone-baseline">
-              <input type="file" id="file-baseline" accept="image/png" class="file-input">
+              <input type="file" id="file-baseline" accept="image/png, image/jpeg, image/jpg, image/webp, image/svg+xml, image/bmp" class="file-input">
               <div class="upload-zone-content">
                 <span class="upload-label">Baseline (Base)</span>
                 <span class="file-name" id="name-baseline">Sin archivo</span>
               </div>
             </div>
 
+            <!-- Botón Intercambiar (⇄ Swap) -->
+            <div class="btn-swap-wrapper">
+              <button id="btn-swap-images" type="button" class="btn-swap" title="Intercambiar Baseline y Current (⇄)">
+                <span>⇄ Intercambiar</span>
+              </button>
+            </div>
+
             <!-- Zona de Carga 2: Current -->
             <div class="upload-zone" id="zone-current">
-              <input type="file" id="file-current" accept="image/png" class="file-input">
+              <input type="file" id="file-current" accept="image/png, image/jpeg, image/jpg, image/webp, image/svg+xml, image/bmp" class="file-input">
               <div class="upload-zone-content">
                 <span class="upload-label">Current (Prueba)</span>
                 <span class="file-name" id="name-current">Sin archivo</span>
@@ -183,6 +190,9 @@
             <span class="toolbar-label">Marcas:</span>
             <button class="tool-btn active" id="tool-pan" data-tool="pan" title="Mover / Navegación (Mantén Espacio para mover)">
               <span class="tool-icon">✋</span> <span class="tool-btn-text">Mover</span>
+            </button>
+            <button class="tool-btn" id="tool-select" data-tool="select" title="Seleccionar y Mover Marcas (Haz clic para seleccionar/mover, Supr para borrar)">
+              <span class="tool-icon">↖️</span> <span class="tool-btn-text">Seleccionar</span>
             </button>
             <button class="tool-btn" id="tool-pencil" data-tool="pencil" title="Lápiz (Mano Alzada)">
               <span class="tool-icon">✏️</span> <span class="tool-btn-text">Lápiz</span>
