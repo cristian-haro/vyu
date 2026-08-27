@@ -288,6 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnQuickCompare = document.getElementById('btn-quick-compare');
   const historyContainer = document.getElementById('history-container');
   const btnDownloadDiff = document.getElementById('btn-download-diff');
+  const btnLoadDemo = document.getElementById('btn-load-demo');
 
   // Terminal / Consola
   const terminalConsole = document.getElementById('terminal-console');
@@ -937,6 +938,79 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // Soporte para pegar imágenes desde el portapapeles (Ctrl + V)
+  window.addEventListener('paste', (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.indexOf('image') !== -1) {
+        const file = item.getAsFile();
+        if (!state.baselineFile) {
+          handleFileSelection(file, 'baseline');
+          writeToTerminal('system', 'Imagen pegada desde el portapapeles como Baseline.');
+        } else {
+          handleFileSelection(file, 'current');
+          writeToTerminal('system', 'Imagen pegada desde el portapapeles como Current.');
+        }
+        break;
+      }
+    }
+  });
+
+  // Cargar imágenes de ejemplo (Demo)
+  async function loadDemoImages(autoRun = true) {
+    try {
+      writeToTerminal('system', 'Cargando imágenes de prueba (Demo)...');
+      if (btnLoadDemo) {
+        btnLoadDemo.style.pointerEvents = 'none';
+        btnLoadDemo.style.opacity = '0.7';
+      }
+
+      // Cargar los dos SVGs de muestra
+      const img1 = await loadImage('./samples/baseline.svg');
+      const img2 = await loadImage('./samples/current.svg');
+
+      const width = 800;
+      const height = 520;
+
+      const c1 = document.createElement('canvas');
+      c1.width = width;
+      c1.height = height;
+      c1.getContext('2d').drawImage(img1, 0, 0);
+      const blob1 = await canvasToBlob(c1);
+
+      const c2 = document.createElement('canvas');
+      c2.width = width;
+      c2.height = height;
+      c2.getContext('2d').drawImage(img2, 0, 0);
+      const blob2 = await canvasToBlob(c2);
+
+      const file1 = new File([blob1], 'dashboard_v1_baseline.png', { type: 'image/png' });
+      const file2 = new File([blob2], 'dashboard_v2_current.png', { type: 'image/png' });
+
+      handleFileSelection(file1, 'baseline');
+      handleFileSelection(file2, 'current');
+
+      writeToTerminal('system', 'Imágenes de demo cargadas.');
+
+      if (autoRun) {
+        btnQuickCompare.click();
+      }
+    } catch (err) {
+      console.error('Error cargando demo:', err);
+      writeToTerminal('stderr', `Error al cargar imágenes de prueba: ${err.message}`);
+    } finally {
+      if (btnLoadDemo) {
+        btnLoadDemo.style.pointerEvents = 'auto';
+        btnLoadDemo.style.opacity = '1';
+      }
+    }
+  }
+
+  if (btnLoadDemo) {
+    btnLoadDemo.addEventListener('click', () => loadDemoImages(true));
+  }
+
 
   // ==========================================
   // 8. COMUNICACIÓN CON EL SERVIDOR (APIs)
@@ -1147,6 +1221,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (comparisons.length === 0) {
         historyContainer.innerHTML = '<p class="section-desc" style="text-align: center; color: #475569; padding: 10px;">Ninguna comparación previa.</p>';
+        if (autoClickFirst) {
+          loadDemoImages(true);
+        }
         return;
       }
 
@@ -1534,8 +1611,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // 12. INICIALIZACIÓN
   // ==========================================
   
-  // 1. Cargar historial de diffs
-  loadHistoryList();
+  // 1. Cargar historial de diffs o precargar demo si es la primera visita
+  loadHistoryList(true);
 
   // 3. Iniciar ping de salud constante
   checkServerHealth();
