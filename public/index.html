@@ -39,105 +39,132 @@
     <!-- CUERPO DE LA APLICACIÓN -->
     <div class="app-body">
 
-      <!-- COLUMNA IZQUIERDA: Scripts y Carga -->
+      <!-- COLUMNA IZQUIERDA: Scripts, Ajustes, Errores y Carga -->
       <aside class="sidebar sidebar-left">
+        <!-- Navegación por pestañas del Sidebar -->
+        <nav class="sidebar-nav">
+          <button class="sidebar-tab-btn active" data-tab-panel="panel-upload" title="Carga y Comparación">
+            <span>📁</span> <span class="tab-label">Carga</span>
+          </button>
+          <button class="sidebar-tab-btn" data-tab-panel="panel-settings" title="Parámetros del Motor">
+            <span>⚙️</span> <span class="tab-label">Ajustes</span>
+          </button>
+          <button class="sidebar-tab-btn" data-tab-panel="panel-errors" title="Inspector de Discrepancias">
+            <span>🎯</span> <span class="tab-label">Errores</span>
+            <span id="badge-errors-count" class="tab-badge" style="display: none;">0</span>
+          </button>
+          <button class="sidebar-tab-btn" data-tab-panel="panel-history" title="Historial Local">
+            <span>🕒</span> <span class="tab-label">Historial</span>
+          </button>
+        </nav>
 
-        <!-- Sección 2: Carga Rápida de Archivos -->
-        <div class="sidebar-section glass-panel">
-          <h3>Carga Rápida (Quick Compare)</h3>
-          <p class="section-desc">Arrastra o sube imágenes (PNG, JPG, WebP, SVG) para compararlas.</p>
+        <!-- Panel 1: Carga Rápida -->
+        <div class="sidebar-panel active" id="panel-upload">
+          <div class="sidebar-section glass-panel">
+            <h3>Carga Rápida (Quick Compare)</h3>
+            <p class="section-desc">Arrastra o sube imágenes (PNG, JPG, WebP, SVG) para compararlas.</p>
 
-          <div class="upload-zone-wrapper">
-            <!-- Zona de Carga 1: Baseline -->
-            <div class="upload-zone" id="zone-baseline">
-              <input type="file" id="file-baseline" accept="image/png, image/jpeg, image/jpg, image/webp, image/svg+xml, image/bmp" class="file-input">
-              <div class="upload-zone-content">
-                <span class="upload-label">Baseline (Base)</span>
-                <span class="file-name" id="name-baseline">Sin archivo</span>
+            <div class="upload-zone-wrapper">
+              <!-- Zona de Carga 1: Baseline -->
+              <div class="upload-zone" id="zone-baseline">
+                <input type="file" id="file-baseline" accept="image/png, image/jpeg, image/jpg, image/webp, image/svg+xml, image/bmp" class="file-input">
+                <div class="upload-zone-content">
+                  <span class="upload-label">Baseline (Base)</span>
+                  <span class="file-name" id="name-baseline">Sin archivo</span>
+                </div>
+              </div>
+
+              <!-- Botón Intercambiar (⇄ Swap) -->
+              <div class="btn-swap-wrapper">
+                <button id="btn-swap-images" type="button" class="btn-swap" title="Intercambiar Baseline y Current (⇄)">
+                  <span>⇄ Intercambiar</span>
+                </button>
+              </div>
+
+              <!-- Zona de Carga 2: Current -->
+              <div class="upload-zone" id="zone-current">
+                <input type="file" id="file-current" accept="image/png, image/jpeg, image/jpg, image/webp, image/svg+xml, image/bmp" class="file-input">
+                <div class="upload-zone-content">
+                  <span class="upload-label">Current (Prueba)</span>
+                  <span class="file-name" id="name-current">Sin archivo</span>
+                </div>
               </div>
             </div>
 
-            <!-- Botón Intercambiar (⇄ Swap) -->
-            <div class="btn-swap-wrapper">
-              <button id="btn-swap-images" type="button" class="btn-swap" title="Intercambiar Baseline y Current (⇄)">
-                <span>⇄ Intercambiar</span>
-              </button>
+            <button id="btn-quick-compare" class="btn btn-primary btn-full mt-10" disabled>
+              <span>⚡ Ejecutar Comparación Rápida</span>
+            </button>
+
+            <button id="btn-load-demo" class="btn btn-full mt-10" style="background: rgba(99, 102, 241, 0.12); border: 1px dashed rgba(99, 102, 241, 0.4); color: #c7d2fe; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 500; font-size: 0.82rem; padding: 9px; cursor: pointer; border-radius: var(--radius-sm); transition: all 0.2s;">
+              <span>✨ Cargar Ejemplo de Prueba (Demo)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Panel 2: Parámetros y Motor -->
+        <div class="sidebar-panel" id="panel-settings">
+          <div class="sidebar-section glass-panel">
+            <h3>Parámetros de Ajuste</h3>
+            <p class="section-desc">Personaliza la sensibilidad del motor pixelmatch.</p>
+
+            <div class="parameter-group">
+              <div class="parameter-header">
+                <label for="range-threshold">Sensibilidad (Threshold)</label>
+                <span class="parameter-value" id="val-threshold">0.10</span>
+              </div>
+              <input type="range" id="range-threshold" min="0.0" max="1.0" step="0.01" value="0.10" class="slider-range">
+              <span class="parameter-tip">Menor (ej. 0.05) estricto. Mayor (ej. 0.20) tolerante.</span>
             </div>
 
-            <!-- Zona de Carga 2: Current -->
-            <div class="upload-zone" id="zone-current">
-              <input type="file" id="file-current" accept="image/png, image/jpeg, image/jpg, image/webp, image/svg+xml, image/bmp" class="file-input">
-              <div class="upload-zone-content">
-                <span class="upload-label">Current (Prueba)</span>
-                <span class="file-name" id="name-current">Sin archivo</span>
+            <div class="parameter-group checkbox-group">
+              <label class="checkbox-container">
+                <input type="checkbox" id="chk-include-aa">
+                <span class="checkmark"></span>
+                <span class="checkbox-label">Ignorar Anti-Aliasing</span>
+              </label>
+              <span class="parameter-tip">Evita falsos positivos en fuentes y bordes redondeados.</span>
+            </div>
+
+            <div class="parameter-group">
+              <label>Color de Diferencia (Diff)</label>
+              <div class="color-options-grid">
+                <button class="color-dot active" style="background-color: #ff003c" data-color="[255,0,60]" title="Rojo Neón"></button>
+                <button class="color-dot" style="background-color: #e000ff" data-color="[224,0,255]" title="Fucsia"></button>
+                <button class="color-dot" style="background-color: #ffcc00" data-color="[255,204,0]" title="Amarillo"></button>
+                <button class="color-dot" style="background-color: #a855f7" data-color="[168,85,247]" title="Violeta"></button>
+                <button class="color-dot" style="background-color: #00f0ff" data-color="[0,240,255]" title="Cian"></button>
               </div>
             </div>
+
+            <button id="btn-recompare" class="btn btn-primary btn-full mt-10">
+              <span>Actualizar PixelMatch</span>
+            </button>
           </div>
-
-          <button id="btn-quick-compare" class="btn btn-primary btn-full mt-10" disabled>
-            <span>Ejecutar Comparación Rápida</span>
-          </button>
-
-          <button id="btn-load-demo" class="btn btn-full mt-10" style="background: rgba(99, 102, 241, 0.12); border: 1px dashed rgba(99, 102, 241, 0.4); color: #c7d2fe; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 500; font-size: 0.82rem; padding: 9px; cursor: pointer; border-radius: var(--radius-sm); transition: all 0.2s;">
-            <span>✨ Cargar Ejemplo de Prueba (Demo)</span>
-          </button>
         </div>
 
-        <!-- Sección 2: Parámetros de Pixelmatch -->
-        <div class="sidebar-section glass-panel">
-          <h3>Parámetros de Ajuste</h3>
-          <p class="section-desc">Personaliza el motor de comparación pixelmatch.</p>
-
-          <div class="parameter-group">
-            <div class="parameter-header">
-              <label for="range-threshold">Sensibilidad (Threshold)</label>
-              <span class="parameter-value" id="val-threshold">0.10</span>
+        <!-- Panel 3: Inspector de Errores (Discrepancias) -->
+        <div class="sidebar-panel" id="panel-errors">
+          <div class="sidebar-section glass-panel">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <h3>Discrepancias</h3>
+              <span id="errors-status-chip" class="badge-status" style="font-size: 0.65rem; padding: 2px 8px; background: rgba(99, 102, 241, 0.2); color: #818cf8;">0 áreas</span>
             </div>
-            <input type="range" id="range-threshold" min="0.0" max="1.0" step="0.01" value="0.10" class="slider-range">
-            <span class="parameter-tip">Un valor menor (ej. 0.05) hace la comparación más estricta a variaciones de
-              color. Un valor mayor la hace más tolerante.</span>
-          </div>
-
-          <div class="parameter-group checkbox-group">
-            <label class="checkbox-container">
-              <input type="checkbox" id="chk-include-aa">
-              <span class="checkmark"></span>
-              <span class="checkbox-label">Ignorar Anti-Aliasing (Suavizado)</span>
-            </label>
-            <span class="parameter-tip">Evita falsos positivos causados por el suavizado de bordes en fuentes de texto o
-              gráficos curvos.</span>
-          </div>
-
-          <div class="parameter-group">
-            <label>Color de Diferencia (Diff)</label>
-            <div class="color-options-grid">
-              <button class="color-dot active" style="background-color: #ff003c" data-color="[255,0,60]"
-                title="Rojo Neón"></button>
-              <button class="color-dot" style="background-color: #e000ff" data-color="[224,0,255]"
-                title="Fucsia"></button>
-              <button class="color-dot" style="background-color: #ffcc00" data-color="[255,204,0]"
-                title="Amarillo"></button>
-              <button class="color-dot" style="background-color: #a855f7" data-color="[168,85,247]"
-                title="Violeta"></button>
-              <button class="color-dot" style="background-color: #00f0ff" data-color="[0,240,255]"
-                title="Cian"></button>
+            <p class="section-desc">Cajas delimitadoras detectadas automáticamente por el algoritmo de clustering.</p>
+            
+            <div class="errors-list" id="errors-container" style="display: flex; flex-direction: column; gap: 8px; max-height: 420px; overflow-y: auto;">
+              <p class="section-desc" style="text-align: center; color: #475569; padding: 15px;">Ningún error detectado.</p>
             </div>
           </div>
-
-          <button id="btn-recompare" class="btn btn-primary btn-full mt-10">
-            <span>Actualizar PixelMatch</span>
-          </button>
         </div>
 
-        <!-- Sección 3: Historial de Diffs -->
-        <div class="sidebar-section glass-panel" id="section-history"
-          style="display: flex; flex-direction: column;">
-          <h3>Historial de Diffs</h3>
-          <p class="section-desc">Historial de comparaciones guardadas localmente.</p>
-          <div class="history-list" id="history-container"
-            style="display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
-            <p class="section-desc" style="text-align: center; color: #475569; padding: 10px;">Ninguna comparación
-              previa.</p>
+        <!-- Panel 4: Historial de Diffs -->
+        <div class="sidebar-panel" id="panel-history">
+          <div class="sidebar-section glass-panel" id="section-history" style="display: flex; flex-direction: column;">
+            <h3>Historial de Diffs</h3>
+            <p class="section-desc">Comparaciones guardadas localmente en el navegador.</p>
+            <div class="history-list" id="history-container" style="display: flex; flex-direction: column; gap: 8px; padding-right: 4px; max-height: 420px; overflow-y: auto;">
+              <p class="section-desc" style="text-align: center; color: #475569; padding: 10px;">Ninguna comparación previa.</p>
+            </div>
           </div>
         </div>
       </aside>
@@ -161,7 +188,7 @@
 
           <!-- Controles de Acción de Anotación (Deshacer, Borrar, Descargar) -->
           <div class="action-controls-group" id="action-controls-group" style="display: none; align-items: center; gap: 8px; margin-left: auto; margin-right: 15px;">
-            <button id="btn-undo-annot" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.75rem;" title="Deshacer última marca">
+            <button id="btn-undo-annot" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.75rem;" title="Deshacer última marca (Ctrl+Z)">
               <span>↩️</span> <span class="btn-text">Deshacer</span>
             </button>
             <button id="btn-clear-annot" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.75rem;" title="Borrar todas las marcas">
@@ -171,7 +198,7 @@
               <span>💾</span> <span class="btn-text">Descargar Comparativa</span>
             </button>
             <button id="btn-new-compare" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.75rem; color: #f87171; border-color: rgba(248, 113, 113, 0.2); background-color: rgba(248, 113, 113, 0.05);" title="Cerrar la comparativa actual y limpiar el workspace">
-              <span>❌</span> <span class="btn-text">Nueva Comparación</span>
+              <span>❌</span> <span class="btn-text">Nueva</span>
             </button>
           </div>
 
@@ -184,56 +211,61 @@
           </div>
         </div>
 
-        <!-- Barra de Herramientas de Anotación (Floating/Sticky under tabs) -->
+        <!-- Barra de Herramientas de Anotación (Rediseñada y Compacta) -->
         <div class="annotation-toolbar glass-panel" id="annotation-toolbar" style="display: none; margin-top: -5px; margin-bottom: 5px;">
+          <!-- Grupo 1: Herramientas Principales -->
           <div class="toolbar-group">
-            <span class="toolbar-label">Marcas:</span>
-            <button class="tool-btn active" id="tool-pan" data-tool="pan" title="Mover / Navegación (Mantén Espacio para mover)">
+            <button class="tool-btn active" id="tool-pan" data-tool="pan" title="Mover / Paneo (Mantén Espacio)">
               <span class="tool-icon">✋</span> <span class="tool-btn-text">Mover</span>
             </button>
-            <button class="tool-btn" id="tool-select" data-tool="select" title="Seleccionar y Mover Marcas (Haz clic para seleccionar/mover, Supr para borrar)">
+            <button class="tool-btn" id="tool-select" data-tool="select" title="Seleccionar y Mover Marcas (Supr para borrar)">
               <span class="tool-icon">↖️</span> <span class="tool-btn-text">Seleccionar</span>
             </button>
-            <button class="tool-btn" id="tool-pencil" data-tool="pencil" title="Lápiz (Mano Alzada)">
-              <span class="tool-icon">✏️</span> <span class="tool-btn-text">Lápiz</span>
-            </button>
-            <button class="tool-btn" id="tool-rect" data-tool="rect" title="Rectángulo (Cuadrado)">
-              <span class="tool-icon">⬜</span> <span class="tool-btn-text">Rectángulo</span>
-            </button>
-            <button class="tool-btn" id="tool-circle" data-tool="circle" title="Círculo (Redondear)">
-              <span class="tool-icon">⭕</span> <span class="tool-btn-text">Círculo</span>
-            </button>
-            <button class="tool-btn" id="tool-text" data-tool="text" title="Nota de Texto (Haz clic para escribir)">
-              <span class="tool-icon">💬</span> <span class="tool-btn-text">Nota</span>
-            </button>
-            <button class="tool-btn" id="tool-eraser" data-tool="eraser" title="Borrador (Haz clic en una marca para eliminarla)">
-              <span class="tool-icon">🧽</span> <span class="tool-btn-text">Borrador</span>
-            </button>
+
+            <!-- Selector desplegable de Formas de Dibujo -->
+            <div class="toolbar-dropdown-wrapper" style="display: flex; align-items: center; gap: 6px;">
+              <span class="toolbar-label">Herramienta:</span>
+              <select id="select-shape-tool" class="toolbar-select">
+                <option value="pencil">✏️ Lápiz (Libre)</option>
+                <option value="rect" selected>⬜ Rectángulo</option>
+                <option value="circle">⭕ Círculo</option>
+                <option value="text">💬 Nota de Texto</option>
+                <option value="ignore">🛡️ Zona de Ignorado (Exclusión)</option>
+                <option value="eraser">🧽 Borrador</option>
+              </select>
+            </div>
           </div>
           
           <div class="toolbar-separator"></div>
           
+          <!-- Grupo 2: Propiedades (Grosor y Color compacto) -->
           <div class="toolbar-group">
             <span class="toolbar-label">Grosor:</span>
-            <select id="select-thickness" class="toolbar-select">
-              <option value="2">Fino (2px)</option>
-              <option value="4" selected>Medio (4px)</option>
-              <option value="8">Grueso (8px)</option>
-              <option value="12">Muy Grueso (12px)</option>
+            <select id="select-thickness" class="toolbar-select" style="min-width: 65px;">
+              <option value="2">2px</option>
+              <option value="4" selected>4px</option>
+              <option value="8">8px</option>
+              <option value="12">12px</option>
+            </select>
+
+            <span class="toolbar-label" style="margin-left: 6px;">Color:</span>
+            <select id="select-annot-color" class="toolbar-select" style="min-width: 105px;">
+              <option value="#ff003c" selected>🔴 Rojo Neón</option>
+              <option value="#10b981">🟢 Verde</option>
+              <option value="#ffcc00">🟡 Amarillo</option>
+              <option value="#00f0ff">🔵 Cian</option>
+              <option value="#a855f7">🟣 Violeta</option>
+              <option value="#f97316">🟠 Naranja</option>
             </select>
           </div>
-          
+
           <div class="toolbar-separator"></div>
-          
+
+          <!-- Grupo 3: Cajas de Error Automáticas Toggle -->
           <div class="toolbar-group">
-            <span class="toolbar-label">Color:</span>
-            <div class="annotation-colors">
-              <button class="annot-color-dot active" style="background-color: #ff003c" data-color="#ff003c" title="Rojo"></button>
-              <button class="annot-color-dot" style="background-color: #10b981" data-color="#10b981" title="Verde"></button>
-              <button class="annot-color-dot" style="background-color: #ffcc00" data-color="#ffcc00" title="Amarillo"></button>
-              <button class="annot-color-dot" style="background-color: #00f0ff" data-color="#00f0ff" title="Cian"></button>
-              <button class="annot-color-dot" style="background-color: #a855f7" data-color="#a855f7" title="Violeta"></button>
-            </div>
+            <button id="btn-toggle-error-boxes" class="btn btn-secondary active" style="padding: 5px 10px; font-size: 0.72rem; gap: 6px;" title="Activar/Desactivar visualización de Cajas de Error">
+              <span>🎯 Cajas Error: <strong id="lbl-error-toggle">ON</strong></span>
+            </button>
           </div>
         </div>
 

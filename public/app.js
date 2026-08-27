@@ -78,6 +78,93 @@ function canvasToBlob(canvas) {
   return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
 }
 
+function detectErrorClusters(diffImgData, width, height, gridSize = 20) {
+  const cols = Math.ceil(width / gridSize);
+  const rows = Math.ceil(height / gridSize);
+  const grid = new Int32Array(cols * rows);
+
+  // 1. Contar píxeles discrepantes por celda de cuadrícula
+  for (let y = 0; y < height; y++) {
+    const rowIdx = Math.floor(y / gridSize) * cols;
+    for (let x = 0; x < width; x++) {
+      const pIdx = (y * width + x) * 4;
+      const a = diffImgData.data[pIdx + 3];
+      if (a > 120) {
+        const r = diffImgData.data[pIdx];
+        const g = diffImgData.data[pIdx + 1];
+        const b = diffImgData.data[pIdx + 2];
+        if (Math.abs(r - g) > 20 || Math.abs(r - b) > 20 || r > 180 || b > 180) {
+          const colIdx = Math.floor(x / gridSize);
+          grid[rowIdx + colIdx]++;
+        }
+      }
+    }
+  }
+
+  // 2. Agrupar celdas adyacentes usando algoritmo BFS
+  const visited = new Uint8Array(cols * rows);
+  const clusters = [];
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const idx = r * cols + c;
+      if (grid[idx] > 3 && !visited[idx]) {
+        let minC = c, maxC = c, minR = r, maxR = r;
+        let totalPixels = 0;
+        const queue = [[c, r]];
+        visited[idx] = 1;
+
+        while (queue.length > 0) {
+          const [curC, curR] = queue.shift();
+          const curIdx = curR * cols + curC;
+          totalPixels += grid[curIdx];
+          minC = Math.min(minC, curC);
+          maxC = Math.max(maxC, curC);
+          minR = Math.min(minR, curR);
+          maxR = Math.max(maxR, curR);
+
+          for (let dr = -1; dr <= 1; dr++) {
+            for (let dc = -1; dc <= 1; dc++) {
+              if (dr === 0 && dc === 0) continue;
+              const nc = curC + dc;
+              const nr = curR + dr;
+              if (nc >= 0 && nc < cols && nr >= 0 && nr < rows) {
+                const nIdx = nr * cols + nc;
+                if (grid[nIdx] > 1 && !visited[nIdx]) {
+                  visited[nIdx] = 1;
+                  queue.push([nc, nr]);
+                }
+              }
+            }
+          }
+        }
+
+        const pad = 6;
+        const bx = Math.max(0, minC * gridSize - pad);
+        const by = Math.max(0, minR * gridSize - pad);
+        const bw = Math.min(width - bx, (maxC - minC + 1) * gridSize + pad * 2);
+        const bh = Math.min(height - by, (maxR - minR + 1) * gridSize + pad * 2);
+
+        if (totalPixels >= 5) {
+          clusters.push({
+            id: clusters.length + 1,
+            x: bx,
+            y: by,
+            w: bw,
+            h: bh,
+            pixelCount: totalPixels
+          });
+        }
+      }
+    }
+  }
+
+  // Ordenar discrepancias por tamaño descendente
+  clusters.sort((a, b) => b.pixelCount - a.pixelCount);
+  clusters.forEach((c, idx) => c.id = idx + 1);
+  return clusters;
+}
+
 async function compareImagesClientSide(file1, file2, options) {
   const url1 = (file1 instanceof Blob) ? URL.createObjectURL(file1) : file1;
   const url2 = (file2 instanceof Blob) ? URL.createObjectURL(file2) : file2;
@@ -114,6 +201,25 @@ async function compareImagesClientSide(file1, file2, options) {
     const img1Data = ctx1.getImageData(0, 0, width, height);
     const img2Data = ctx2.getImageData(0, 0, width, height);
 
+    // Si hay zonas de exclusión / ignorado, igualamos los píxeles en esas áreas para que pixelmatch las omita
+    if (options.ignoreRegions && options.ignoreRegions.length > 0) {
+      options.ignoreRegions.forEach(reg => {
+        const rx = Math.max(0, Math.min(width, Math.floor(reg.x)));
+        const ry = Math.max(0, Math.min(height, Math.floor(reg.y)));
+        const rw = Math.min(width - rx, Math.floor(reg.w));
+        const rh = Math.min(height - ry, Math.floor(reg.h));
+        for (let y = ry; y < ry + rh; y++) {
+          for (let x = rx; x < rx + rw; x++) {
+            const idx = (y * width + x) * 4;
+            img2Data.data[idx] = img1Data.data[idx];
+            img2Data.data[idx + 1] = img1Data.data[idx + 1];
+            img2Data.data[idx + 2] = img1Data.data[idx + 2];
+            img2Data.data[idx + 3] = img1Data.data[idx + 3];
+          }
+        }
+      });
+    }
+
     const canvasDiff = document.createElement('canvas');
     canvasDiff.width = width;
     canvasDiff.height = height;
@@ -134,7 +240,31 @@ async function compareImagesClientSide(file1, file2, options) {
       }
     );
 
+    // Pintar patrón ámbar suave en las zonas ignoradas sobre el canvas de diferencias
+    if (options.ignoreRegions && options.ignoreRegions.length > 0) {
+      options.ignoreRegions.forEach(reg => {
+        const rx = Math.max(0, Math.min(width, Math.floor(reg.x)));
+        const ry = Math.max(0, Math.min(height, Math.floor(reg.y)));
+        const rw = Math.min(width - rx, Math.floor(reg.w));
+        const rh = Math.min(height - ry, Math.floor(reg.h));
+        for (let y = ry; y < ry + rh; y++) {
+          for (let x = rx; x < rx + rw; x++) {
+            if ((x + y) % 8 < 3) {
+              const idx = (y * width + x) * 4;
+              diffImgData.data[idx] = 234;
+              diffImgData.data[idx + 1] = 179;
+              diffImgData.data[idx + 2] = 8;
+              diffImgData.data[idx + 3] = 140;
+            }
+          }
+        }
+      });
+    }
+
     ctxDiff.putImageData(diffImgData, 0, 0);
+
+    // Detectar cajas delimitadoras de error automáticamente
+    const errorClusters = detectErrorClusters(diffImgData, width, height);
 
     const baselineBlob = await canvasToBlob(canvas1);
     const currentBlob = await canvasToBlob(canvas2);
@@ -147,7 +277,8 @@ async function compareImagesClientSide(file1, file2, options) {
       mismatchPercentage: ((mismatchPixels / (width * height)) * 100).toFixed(2),
       baselineBlob,
       currentBlob,
-      diffBlob
+      diffBlob,
+      errorClusters
     };
   } finally {
     if (file1 instanceof Blob) URL.revokeObjectURL(url1);
@@ -209,8 +340,8 @@ document.addEventListener('DOMContentLoaded', () => {
     activeTab: 'side-by-side',
     isComparing: false,
 
-    // Estado de Anotaciones
-    activeTool: 'pan', // 'pan', 'select', 'pencil', 'rect', 'circle', 'text', 'eraser'
+    // Estado de Anotaciones y QA Avanzado
+    activeTool: 'pan', // 'pan', 'select', 'pencil', 'rect', 'circle', 'text', 'ignore', 'eraser'
     annotationColor: '#ff003c',
     annotationThickness: 4,
     annotations: [],
@@ -224,14 +355,25 @@ document.addEventListener('DOMContentLoaded', () => {
     shapeOrigX: 0,
     shapeOrigY: 0,
     shapeOrigPoints: null,
-    currentShape: null
+    currentShape: null,
+
+    // Cajas de error y clustering
+    errorClusters: [],
+    showErrorBoxes: true
   };
 
   // ==========================================
   // 2. CACHÉ DE ELEMENTOS DOM
   // ==========================================
   
-  // Pestañas
+  // Pestañas de Sidebar (Navegación compacta)
+  const sidebarTabBtns = document.querySelectorAll('.sidebar-tab-btn');
+  const sidebarPanels = document.querySelectorAll('.sidebar-panel');
+  const badgeErrorsCount = document.getElementById('badge-errors-count');
+  const errorsContainer = document.getElementById('errors-container');
+  const errorsStatusChip = document.getElementById('errors-status-chip');
+
+  // Pestañas de Visor
   const tabs = document.querySelectorAll('.tab-btn');
   const viewModes = document.querySelectorAll('.view-mode-container');
   
@@ -247,8 +389,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const canvasDiffSbs = document.getElementById('canvas-diff-sbs');
   const annotationToolbar = document.getElementById('annotation-toolbar');
   const toolBtns = document.querySelectorAll('.tool-btn');
+  const selectShapeTool = document.getElementById('select-shape-tool');
   const selectThickness = document.getElementById('select-thickness');
-  const annotColorDots = document.querySelectorAll('.annot-color-dot');
+  const selectAnnotColor = document.getElementById('select-annot-color');
+  const btnToggleErrorBoxes = document.getElementById('btn-toggle-error-boxes');
+  const lblErrorToggle = document.getElementById('lbl-error-toggle');
   const btnUndoAnnot = document.getElementById('btn-undo-annot');
   const btnClearAnnot = document.getElementById('btn-clear-annot');
   const btnDownloadConfronted = document.getElementById('btn-download-confronted');
@@ -304,6 +449,17 @@ document.addEventListener('DOMContentLoaded', () => {
   const terminalConsole = document.getElementById('terminal-console');
   const terminalStatus = document.getElementById('terminal-status');
   const btnClearTerminal = document.getElementById('btn-clear-terminal');
+
+  // Manejo de Pestañas del Sidebar
+  sidebarTabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      sidebarTabBtns.forEach(b => b.classList.remove('active'));
+      sidebarPanels.forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      const targetPanel = document.getElementById(btn.dataset.tabPanel);
+      if (targetPanel) targetPanel.classList.add('active');
+    });
+  });
 
   // ==========================================
   // 3. LOGICA DE NAVEGACION, ZOOM Y PAN (Sincronizada) & DIBUJO
@@ -433,6 +589,32 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.rect(rx, ry, rw, rh);
       ctx.stroke();
       bbox = { x: rx, y: ry, w: rw, h: rh };
+    } else if (shape.type === 'ignore') {
+      // Zona de Exclusión / Ignorado (Ámbar translúcido rayado)
+      const rx = Math.min(shape.x, shape.x + shape.w);
+      const ry = Math.min(shape.y, shape.y + shape.h);
+      const rw = Math.abs(shape.w);
+      const rh = Math.abs(shape.h);
+
+      ctx.save();
+      ctx.fillStyle = 'rgba(234, 179, 8, 0.16)';
+      ctx.fillRect(rx, ry, rw, rh);
+      
+      ctx.strokeStyle = '#eab308';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(rx, ry, rw, rh);
+
+      // Etiqueta distintiva
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#eab308';
+      ctx.fillRect(rx, Math.max(0, ry - 18), 85, 18);
+      ctx.fillStyle = '#000000';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.fillText('🛡️ IGNORADO', rx + 6, Math.max(0, ry - 18) + 13);
+      ctx.restore();
+
+      bbox = { x: rx, y: ry, w: rw, h: rh };
     } else if (shape.type === 'circle') {
       ctx.beginPath();
       ctx.arc(shape.x, shape.y, Math.max(0, shape.r), 0, 2 * Math.PI);
@@ -499,6 +681,31 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Dibujar cajas automáticas de error sobre el lienzo
+  function drawErrorBoxes(ctx) {
+    if (!state.showErrorBoxes || !state.errorClusters || state.errorClusters.length === 0) return;
+
+    state.errorClusters.forEach(cluster => {
+      ctx.save();
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = '#00f0ff';
+      ctx.strokeStyle = '#00f0ff';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 4]);
+      ctx.strokeRect(cluster.x, cluster.y, cluster.w, cluster.h);
+
+      // Badge de error con número
+      ctx.setLineDash([]);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#00f0ff';
+      ctx.fillRect(cluster.x, Math.max(0, cluster.y - 18), 34, 18);
+      ctx.fillStyle = '#000000';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillText(`#${cluster.id}`, cluster.x + 6, Math.max(0, cluster.y - 18) + 13);
+      ctx.restore();
+    });
+  }
+
   // Calcular distancia de un punto a un segmento de línea
   function distToSegment(p, v, w) {
     const l2 = (v.x - w.x)**2 + (v.y - w.y)**2;
@@ -519,7 +726,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return dist <= shape.r + threshold;
     }
     
-    if (shape.type === 'rect') {
+    if (shape.type === 'rect' || shape.type === 'ignore') {
       const left = Math.min(shape.x, shape.x + shape.w) - threshold;
       const right = Math.max(shape.x, shape.x + shape.w) + threshold;
       const top = Math.min(shape.y, shape.y + shape.h) - threshold;
@@ -557,17 +764,22 @@ document.addEventListener('DOMContentLoaded', () => {
     return false;
   }
 
-  // Redibujar todas las marcas en los tres canvas
+  // Redibujar todas las marcas y cajas de error en los tres canvas
   function redrawAllCanvases() {
     const canvases = [canvasBaseSbs, canvasCurrentSbs, canvasDiffSbs];
     canvases.forEach(canvas => {
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Dibujar marcas del usuario
       state.annotations.forEach(shape => {
         const isSelected = (state.selectedShape === shape);
         drawShape(ctx, shape, isSelected);
       });
+
+      // Dibujar cajas automáticas de error
+      drawErrorBoxes(ctx);
     });
   }
 
@@ -601,7 +813,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const img = viewport.querySelector('img');
       if (!img || !img.src || img.naturalWidth === 0) return;
 
-      // Si hacemos clic en un input de nota activo, no interferir con él
       if (e.target.classList.contains('annotation-inline-input')) {
         return;
       }
@@ -648,6 +859,10 @@ document.addEventListener('DOMContentLoaded', () => {
               if (state.selectedShape === removed) state.selectedShape = null;
               redrawAllCanvases();
               writeToTerminal('system', 'Marca eliminada.');
+              
+              if (removed.type === 'ignore' && state.baselineBlob && state.currentBlob) {
+                btnRecompare.click();
+              }
               break;
             }
           }
@@ -659,13 +874,11 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
           }
 
-          // Crear caja de entrada inline
           const input = document.createElement('input');
           input.type = 'text';
           input.className = 'annotation-inline-input';
           input.placeholder = 'Escribe una nota...';
           
-          // Posición en pantalla relativa al viewport contenedor
           const wrapperRect = viewport.getBoundingClientRect();
           input.style.left = `${e.clientX - wrapperRect.left}px`;
           input.style.top = `${e.clientY - wrapperRect.top}px`;
@@ -708,14 +921,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 100);
           });
         } else {
-          // Modo Dibujo (Pencil, Rect, Circle)
+          // Modo Dibujo (Pencil, Rect, Circle, Ignore)
           state.isDrawing = true;
           state.drawStartX = clickX;
           state.drawStartY = clickY;
           
           state.currentShape = {
             type: state.activeTool,
-            color: state.annotationColor,
+            color: state.activeTool === 'ignore' ? '#eab308' : state.annotationColor,
             thickness: state.annotationThickness,
             x: clickX,
             y: clickY,
@@ -745,7 +958,6 @@ document.addEventListener('DOMContentLoaded', () => {
       state.panY = e.clientY - state.startY;
       applyTransformations();
     } else if (state.isDraggingShape && state.selectedShape) {
-      // Arrastrar marca seleccionada
       const img = imgBaseSbs;
       if (!img || !img.src || img.naturalWidth === 0) return;
       const rect = img.getBoundingClientRect();
@@ -770,14 +982,12 @@ document.addEventListener('DOMContentLoaded', () => {
       
       if (state.currentShape.type === 'pencil') {
         state.currentShape.points.push({ x: curX, y: curY });
-      } else if (state.currentShape.type === 'rect') {
-        // Generar rectángulo intuitivo en cualquier cuadrante de arrastre
+      } else if (state.currentShape.type === 'rect' || state.currentShape.type === 'ignore') {
         state.currentShape.x = Math.min(state.drawStartX, curX);
         state.currentShape.y = Math.min(state.drawStartY, curY);
         state.currentShape.w = Math.abs(curX - state.drawStartX);
         state.currentShape.h = Math.abs(curY - state.drawStartY);
       } else if (state.currentShape.type === 'circle') {
-        // Generar círculo intuitivo
         const dx = curX - state.drawStartX;
         const dy = curY - state.drawStartY;
         state.currentShape.x = state.drawStartX;
@@ -797,11 +1007,14 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } else if (state.isDraggingShape) {
       state.isDraggingShape = false;
+      // Si movimos una zona de ignorado, recalcular diff
+      if (state.selectedShape && state.selectedShape.type === 'ignore' && state.baselineBlob && state.currentBlob) {
+        btnRecompare.click();
+      }
     } else if (state.isDrawing) {
       state.isDrawing = false;
       if (state.currentShape) {
-        // Descartar clics accidentales diminutos
-        if (state.currentShape.type === 'rect' && state.currentShape.w < 4 && state.currentShape.h < 4) {
+        if ((state.currentShape.type === 'rect' || state.currentShape.type === 'ignore') && state.currentShape.w < 4 && state.currentShape.h < 4) {
           state.annotations.pop();
           state.selectedShape = null;
         } else if (state.currentShape.type === 'circle' && state.currentShape.r < 3) {
@@ -810,6 +1023,10 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (state.currentShape.type === 'pencil' && state.currentShape.points.length < 2) {
           state.annotations.pop();
           state.selectedShape = null;
+        } else if (state.currentShape.type === 'ignore' && state.baselineBlob && state.currentBlob) {
+          // Si terminamos de dibujar una zona de ignorado válida, recalcular diff automáticamente
+          btnRecompare.click();
+          writeToTerminal('system', '🛡️ Zona de exclusión aplicada. Recalculando discrepancias...');
         }
         redrawAllCanvases();
       }
@@ -1227,7 +1444,85 @@ document.addEventListener('DOMContentLoaded', () => {
   // 8. COMUNICACIÓN CON EL SERVIDOR (APIs)
   // ==========================================
 
+  // Visualizar inspector de errores agrupados en el Sidebar
+  function displayErrorClusters(clusters) {
+    state.errorClusters = clusters || [];
+    const count = state.errorClusters.length;
 
+    if (badgeErrorsCount) {
+      if (count > 0) {
+        badgeErrorsCount.textContent = count;
+        badgeErrorsCount.style.display = 'inline-block';
+      } else {
+        badgeErrorsCount.style.display = 'none';
+      }
+    }
+
+    if (errorsStatusChip) {
+      errorsStatusChip.textContent = `${count} ${count === 1 ? 'área' : 'áreas'}`;
+      errorsStatusChip.style.background = count > 0 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)';
+      errorsStatusChip.style.color = count > 0 ? '#f87171' : '#34d399';
+    }
+
+    if (!errorsContainer) return;
+    errorsContainer.innerHTML = '';
+
+    if (count === 0) {
+      errorsContainer.innerHTML = '<p class="section-desc" style="text-align: center; color: #34d399; padding: 15px;">✓ Sin discrepancias visuales (100% IDÉNTICAS)</p>';
+      return;
+    }
+
+    state.errorClusters.forEach(cluster => {
+      const item = document.createElement('div');
+      item.className = 'error-item';
+      item.innerHTML = `
+        <div class="error-item-info">
+          <span class="error-item-title">
+            <span class="error-badge-pill">#${cluster.id}</span> Discrepancia
+          </span>
+          <span class="error-item-meta">${cluster.pixelCount.toLocaleString()} px · ${Math.round(cluster.w)}×${Math.round(cluster.h)} px</span>
+        </div>
+        <button class="btn-focus-error" title="Hacer zoom a este error">
+          <span>🔍</span> <span>Enfocar</span>
+        </button>
+      `;
+
+      item.querySelector('.btn-focus-error').addEventListener('click', (e) => {
+        e.stopPropagation();
+        focusOnErrorCluster(cluster);
+      });
+
+      item.addEventListener('click', () => {
+        focusOnErrorCluster(cluster);
+      });
+
+      errorsContainer.appendChild(item);
+    });
+  }
+
+  // Enfocar / Centrar la cámara en una caja de discrepancia
+  function focusOnErrorCluster(cluster) {
+    if (!imgBaseSbs || imgBaseSbs.naturalWidth === 0) return;
+    
+    // Cambiar automáticamente a modo side-by-side si está en otro
+    const sbsTab = document.querySelector('.tab-btn[data-tab="side-by-side"]');
+    if (sbsTab && !sbsTab.classList.contains('active')) {
+      sbsTab.click();
+    }
+
+    state.zoom = 2.4;
+    const centerX = cluster.x + cluster.w / 2;
+    const centerY = cluster.y + cluster.h / 2;
+
+    const natW = imgBaseSbs.naturalWidth;
+    const natH = imgBaseSbs.naturalHeight;
+
+    state.panX = -(centerX - natW / 2) * state.zoom;
+    state.panY = -(centerY - natH / 2) * state.zoom;
+
+    applyTransformations();
+    writeToTerminal('system', `🎯 Enfocando Discrepancia #${cluster.id} (X:${Math.round(cluster.x)}, Y:${Math.round(cluster.y)}).`);
+  }
 
   // Ejecutar comparación rápida (Local Client-Side)
   btnQuickCompare.addEventListener('click', async () => {
@@ -1238,13 +1533,16 @@ document.addEventListener('DOMContentLoaded', () => {
       btnQuickCompare.querySelector('span').textContent = 'Comparando...';
       writeToTerminal('system', 'Ejecutando pixelmatch localmente en el navegador...');
 
+      const ignoreRegions = state.annotations.filter(a => a.type === 'ignore');
+
       const result = await compareImagesClientSide(
         state.baselineFile,
         state.currentFile,
         {
           threshold: state.threshold,
           includeAA: state.includeAA,
-          diffColor: state.diffColor
+          diffColor: state.diffColor,
+          ignoreRegions: ignoreRegions
         }
       );
 
@@ -1276,7 +1574,8 @@ document.addEventListener('DOMContentLoaded', () => {
           mismatchPixels: result.mismatchPixels,
           mismatchPercentage: result.mismatchPercentage,
           width: result.width,
-          height: result.height
+          height: result.height,
+          errorClusters: result.errorClusters
         }
       });
 
@@ -1284,21 +1583,22 @@ document.addEventListener('DOMContentLoaded', () => {
       displayResultsBar({
         mismatchPixels: result.mismatchPixels,
         mismatchPercentage: result.mismatchPercentage,
-        diffImageUrl: state.diffUrl
+        diffImageUrl: state.diffUrl,
+        errorClusters: result.errorClusters
       });
 
       writeToTerminal('stdout', `[COMPARACIÓN LISTA]`);
-      writeToTerminal('stdout', `Diferencia detectada: ${result.mismatchPixels} píxeles (${result.mismatchPercentage}%)`);
+      writeToTerminal('stdout', `Diferencia detectada: ${result.mismatchPixels} píxeles (${result.mismatchPercentage}%) en ${result.errorClusters ? result.errorClusters.length : 0} áreas.`);
       
     } catch (e) {
       writeToTerminal('stderr', `Fallo al comparar imágenes: ${e.message}`);
     } finally {
       btnQuickCompare.removeAttribute('disabled');
-      btnQuickCompare.querySelector('span').textContent = 'Ejecutar Comparación Rápida';
+      btnQuickCompare.querySelector('span').textContent = '⚡ Ejecutar Comparación Rápida';
     }
   });
 
-  // Re-comparar con parámetros actualizados (Local Client-Side)
+  // Re-comparar con parámetros actualizados o zonas de ignorado
   btnRecompare.addEventListener('click', async () => {
     if (!state.baselineBlob || !state.currentBlob) {
       writeToTerminal('system', 'Primero carga imágenes subiendo archivos.');
@@ -1307,7 +1607,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       btnRecompare.setAttribute('disabled', 'true');
-      writeToTerminal('system', `Actualizando Pixelmatch localmente (Threshold: ${state.threshold} | includeAA: ${state.includeAA})...`);
+      const ignoreRegions = state.annotations.filter(a => a.type === 'ignore');
+      writeToTerminal('system', `Actualizando Pixelmatch (Threshold: ${state.threshold} | Ignoradas: ${ignoreRegions.length})...`);
 
       const result = await compareImagesClientSide(
         state.baselineBlob,
@@ -1315,7 +1616,8 @@ document.addEventListener('DOMContentLoaded', () => {
         {
           threshold: state.threshold,
           includeAA: state.includeAA,
-          diffColor: state.diffColor
+          diffColor: state.diffColor,
+          ignoreRegions: ignoreRegions
         }
       );
 
@@ -1344,7 +1646,8 @@ document.addEventListener('DOMContentLoaded', () => {
           mismatchPixels: result.mismatchPixels,
           mismatchPercentage: result.mismatchPercentage,
           width: result.width,
-          height: result.height
+          height: result.height,
+          errorClusters: result.errorClusters
         }
       });
 
@@ -1352,7 +1655,8 @@ document.addEventListener('DOMContentLoaded', () => {
       displayResultsBar({
         mismatchPixels: result.mismatchPixels,
         mismatchPercentage: result.mismatchPercentage,
-        diffImageUrl: state.diffUrl
+        diffImageUrl: state.diffUrl,
+        errorClusters: result.errorClusters
       });
 
       writeToTerminal('stdout', `[ACTUALIZADO] Píxeles discrepantes: ${result.mismatchPixels} (${result.mismatchPercentage}%)`);
@@ -1379,6 +1683,10 @@ document.addEventListener('DOMContentLoaded', () => {
       resStatusBadge.classList.add('badge-danger');
       resMismatchPercentage.className = 'metric-value text-warning';
     }
+
+    // Actualizar inspector de errores con clusters
+    displayErrorClusters(data.errorClusters);
+    redrawAllCanvases();
 
     // Gestionar el botón de descarga del diff
     if (data.diffImageUrl) {
@@ -1481,27 +1789,23 @@ document.addEventListener('DOMContentLoaded', () => {
           e.stopPropagation();
           if (confirm(`¿Estás seguro de que quieres eliminar "${comp.name}" del historial?`)) {
             await deleteLocalComparison(comp.id);
-            writeToTerminal('system', `Eliminada comparación histórica: ${comp.name}`);
             loadHistoryList();
           }
         });
         
         item.addEventListener('click', () => {
-          writeToTerminal('system', `Restaurando comparación histórica local: ${comp.name}`);
+          document.querySelectorAll('.history-item').forEach(i => i.classList.remove('active'));
+          item.classList.add('active');
+
+          revokeActiveUrls();
+          state.baselineBlob = comp.baselineBlob;
+          state.currentBlob = comp.currentBlob;
+          
+          state.baselineUrl = URL.createObjectURL(comp.baselineBlob);
+          state.currentUrl = URL.createObjectURL(comp.currentBlob);
+          state.diffUrl = URL.createObjectURL(comp.diffBlob);
           
           if (comp.meta) {
-            revokeActiveUrls();
-            
-            // Guardar blobs activos en el estado
-            state.baselineBlob = comp.baselineBlob;
-            state.currentBlob = comp.currentBlob;
-            
-            // Generar URLs temporales de visualización
-            state.baselineUrl = URL.createObjectURL(comp.baselineBlob);
-            state.currentUrl = URL.createObjectURL(comp.currentBlob);
-            state.diffUrl = URL.createObjectURL(comp.diffBlob);
-            
-            // Restaurar parámetros visuales en UI
             state.threshold = comp.meta.threshold;
             rangeThreshold.value = comp.meta.threshold;
             valThreshold.textContent = comp.meta.threshold.toFixed(2);
@@ -1525,8 +1829,11 @@ document.addEventListener('DOMContentLoaded', () => {
             displayResultsBar({
               mismatchPixels: comp.meta.mismatchPixels,
               mismatchPercentage: comp.meta.mismatchPercentage,
-              diffImageUrl: state.diffUrl
+              diffImageUrl: state.diffUrl,
+              errorClusters: comp.meta.errorClusters || []
             });
+          } else {
+            updateImagesInDOM();
           }
         });
         
@@ -1603,37 +1910,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   // ==========================================
-  // 11.5 MANEJO DE HERRAMIENTAS DE ANOTACIÓN
+  // 11.5 ACCIONES DE ANOTACIÓN Y EXPORTACIÓN
   // ==========================================
-
-  // Seleccionar herramienta
-  toolBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      toolBtns.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      state.activeTool = btn.dataset.tool;
-      updateCursor();
-      writeToTerminal('system', `Herramienta de dibujo cambiada a: ${state.activeTool}`);
-    });
-  });
-
-  // Cambiar grosor
-  if (selectThickness) {
-    selectThickness.addEventListener('change', (e) => {
-      state.annotationThickness = parseInt(e.target.value, 10);
-      writeToTerminal('system', `Grosor de línea de marca cambiado a: ${state.annotationThickness}px`);
-    });
-  }
-
-  // Seleccionar color
-  annotColorDots.forEach(dot => {
-    dot.addEventListener('click', () => {
-      annotColorDots.forEach(d => d.classList.remove('active'));
-      dot.classList.add('active');
-      state.annotationColor = dot.dataset.color;
-      writeToTerminal('system', `Color de marca cambiado a: ${state.annotationColor}`);
-    });
-  });
 
   // Deshacer (Undo)
   if (btnUndoAnnot) {
