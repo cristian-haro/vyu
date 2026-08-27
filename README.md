@@ -1,6 +1,6 @@
-# Vyú - Workspace de Regresión Visual e Integración con Maestro
+# Vyú - Workspace de Regresión Visual
 
-¡Bienvenido a **Vyú**! Un espacio de trabajo interactivo premium diseñado para realizar pruebas de regresión visual píxel a píxel, analizar discrepancias de diseño con herramientas visuales de anotación y verificar flujos automatizados de Maestro.
+¡Bienvenido a **Vyú**! Un espacio de trabajo interactivo premium diseñado para realizar pruebas de regresión visual píxel a píxel y analizar discrepancias de diseño con herramientas visuales de anotación.
 
 Este laboratorio visual puede ejecutarse tanto **de forma local con Node.js** como a través de **Docker**, facilitando su uso en cualquier máquina de desarrollo.
 
@@ -57,21 +57,7 @@ docker run -d -p 3000:3000 \
 ```
 
 ---
-
-## 3. Integración con Maestro
-
-Vyú incluye soporte integrado para flujos de pruebas móviles de **Maestro**:
-1. Coloca tus capturas base (baseline) en `data/maestro/baseline/`.
-2. Guarda las capturas de prueba obtenidas con Maestro en `data/maestro/current/` con el mismo nombre.
-3. Ejecuta el script de comparación desde la terminal:
-   ```bash
-   node scripts/compare-maestro-screens.js
-   ```
-4. El script redimensionará automáticamente las imágenes en caso de discrepancias de tamaño, comparará los píxeles y guardará los resultados en el **Historial de Diffs** para que puedas visualizarlos y marcarlos interactivamente desde la web de Vyú.
-
----
-
-## 4. Características Principales del Workspace
+## 3. Características Principales del Workspace
 * **Visualizador Side-by-Side Sincronizado**: Zoom y paneo sincronizados en las 3 columnas (Base, Current, Diff) con visualización de coordenadas en hover.
 * **Herramientas de Anotación de Diseño**: Dibuja rectángulos, círculos, líneas a mano alzada y añade notas de texto para reportar regresiones específicas en las capturas de pantalla.
 * **Descarga de Comparativa Enfrentada**: Genera y descarga una sola imagen combinada que contiene ambas imágenes cara a cara con sus respectivas marcas de diseño superpuestas.
@@ -80,7 +66,7 @@ Vyú incluye soporte integrado para flujos de pruebas móviles de **Maestro**:
 
 ---
 
-## 5. Comandos Útiles de Docker
+## 4. Comandos Útiles de Docker
 * **Ver logs del servidor**: `docker logs -f vyu-workspace`
 * **Detener el contenedor**: `docker stop vyu-workspace`
 * **Iniciar un contenedor detenido**: `docker start vyu-workspace`

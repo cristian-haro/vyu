@@ -83,28 +83,8 @@ Una vez ejecutada la comparación en el modo **Side-by-Side**, puedes añadir ma
 
 ---
 
-## 5. Flujo 3: Integración Avanzada con Maestro
+## 5. Historial de Diffs (Guardar y Restaurar)
 
-Si utilizas **Maestro** para hacer pruebas en emuladores móviles y quieres compararlo con maquetas de diseño:
-
-### Paso 1: Configurar las Carpetas de Referencia
-* Coloca tus mockups o diseños base aprobados en PNG en la carpeta `data/maestro/baseline/` (Ej. `pantalla_login.png`).
-
-### Paso 2: Ejecutar tus Pruebas de Maestro
-* Configura tus flujos de prueba en Maestro para guardar las capturas generadas en la carpeta `data/maestro/current/` con el mismo nombre de archivo (Ej. `pantalla_login.png`).
-
-### Paso 3: Lanzar la Comparación desde la Terminal
-* Abre la terminal y ejecuta el script de comparación de Maestro:
-   ```bash
-   node scripts/compare-maestro-screens.js
-   ```
-* El script redimensionará de forma automática las capturas que difieran en tamaño, ejecutará la comparación de píxeles y generará los resultados en el **Historial de Diffs** en Vyú.
-* Abre la web de Vyú y haz clic en la nueva tarjeta creada en el historial para inspeccionar e interactuar con la regresión del emulador.
-
----
-
-## 6. Historial de Diffs (Guardar y Restaurar)
-
-Cada comparación realizada (sea por carga rápida o vía script de Maestro) se almacena cronológicamente en el sidebar izquierdo:
+Cada comparación realizada se almacena cronológicamente en el sidebar izquierdo:
 * Haz clic sobre cualquier item del historial para restaurar por completo la comparativa.
 * **Restauración de Configuración**: Vyú volverá a aplicar el baseline, current y diff correspondientes, y restaurará el deslizador de `Threshold`, el selector de `Anti-Aliasing` y el color del Diff exactamente a como se ejecutó originalmente.

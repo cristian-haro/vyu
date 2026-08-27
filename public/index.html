@@ -32,7 +32,7 @@
       </div>
       <div class="header-actions">
         <span class="status-indicator online"></span>
-        <span class="status-text">Servidor Activo (Puerto 3000)</span>
+        <span class="status-text">Modo Local Privado (Sin Subidas)</span>
       </div>
     </header>
 
@@ -122,7 +122,7 @@
         <div class="sidebar-section glass-panel" id="section-history"
           style="display: flex; flex-direction: column;">
           <h3>Historial de Diffs</h3>
-          <p class="section-desc">Historial de comparaciones procesadas en el servidor.</p>
+          <p class="section-desc">Historial de comparaciones guardadas localmente.</p>
           <div class="history-list" id="history-container"
             style="display: flex; flex-direction: column; gap: 8px; padding-right: 4px;">
             <p class="section-desc" style="text-align: center; color: #475569; padding: 10px;">Ninguna comparación
@@ -158,6 +158,9 @@
             </button>
             <button id="btn-download-confronted" class="btn btn-primary" style="padding: 6px 12px; font-size: 0.75rem;" title="Descargar imágenes enfrentadas con marcas">
               <span>💾</span> <span class="btn-text">Descargar Comparativa</span>
+            </button>
+            <button id="btn-new-compare" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.75rem; color: #f87171; border-color: rgba(248, 113, 113, 0.2); background-color: rgba(248, 113, 113, 0.05);" title="Cerrar la comparativa actual y limpiar el workspace">
+              <span>❌</span> <span class="btn-text">Nueva Comparación</span>
             </button>
           </div>
 
@@ -345,7 +348,7 @@
   </div>
 
   <!-- JavaScript Principal -->
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 
 </html>

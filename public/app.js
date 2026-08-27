@@ -1,8 +1,178 @@
+import pixelmatch from 'https://esm.run/pixelmatch';
+
+// ==========================================
+// DB LOCAL (IndexedDB) - ALMACENAMIENTO DE COMPARACIONES
+// ==========================================
+const DB_NAME = 'VyuLocalDB';
+const DB_VERSION = 1;
+const STORE_NAME = 'comparisons';
+
+function initDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      }
+    };
+    request.onsuccess = (e) => resolve(e.target.result);
+    request.onerror = (e) => reject(e.target.error);
+  });
+}
+
+function saveLocalComparison(comparison) {
+  return initDB().then(db => {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const request = store.put(comparison);
+      request.onsuccess = () => resolve();
+      request.onerror = (e) => reject(e.target.error);
+    });
+  });
+}
+
+function getLocalComparisons() {
+  return initDB().then(db => {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      const request = store.getAll();
+      request.onsuccess = () => {
+        const list = request.result || [];
+        list.sort((a, b) => b.timestamp - a.timestamp);
+        resolve(list);
+      };
+      request.onerror = (e) => reject(e.target.error);
+    });
+  });
+}
+
+function deleteLocalComparison(id) {
+  return initDB().then(db => {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const request = store.delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = (e) => reject(e.target.error);
+    });
+  });
+}
+
+// ==========================================
+// FUNCIONES AUXILIARES CLIENT-SIDE
+// ==========================================
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = (err) => reject(err);
+    img.src = src;
+  });
+}
+
+function canvasToBlob(canvas) {
+  return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+}
+
+async function compareImagesClientSide(file1, file2, options) {
+  const url1 = (file1 instanceof Blob) ? URL.createObjectURL(file1) : file1;
+  const url2 = (file2 instanceof Blob) ? URL.createObjectURL(file2) : file2;
+
+  try {
+    const img1 = await loadImage(url1);
+    const img2 = await loadImage(url2);
+
+    const width = img1.naturalWidth;
+    const height = img1.naturalHeight;
+
+    if (width === 0 || height === 0) {
+      throw new Error("Dimensiones de la imagen base inválidas.");
+    }
+
+    const canvas1 = document.createElement('canvas');
+    canvas1.width = width;
+    canvas1.height = height;
+    const ctx1 = canvas1.getContext('2d');
+    ctx1.drawImage(img1, 0, 0);
+
+    const canvas2 = document.createElement('canvas');
+    canvas2.width = width;
+    canvas2.height = height;
+    const ctx2 = canvas2.getContext('2d');
+
+    if (img2.naturalWidth !== width || img2.naturalHeight !== height) {
+      console.log(`[RESIZE] Redimensionando Current de ${img2.naturalWidth}x${img2.naturalHeight} a ${width}x${height}`);
+      ctx2.drawImage(img2, 0, 0, width, height);
+    } else {
+      ctx2.drawImage(img2, 0, 0);
+    }
+
+    const img1Data = ctx1.getImageData(0, 0, width, height);
+    const img2Data = ctx2.getImageData(0, 0, width, height);
+
+    const canvasDiff = document.createElement('canvas');
+    canvasDiff.width = width;
+    canvasDiff.height = height;
+    const ctxDiff = canvasDiff.getContext('2d');
+    const diffImgData = ctxDiff.createImageData(width, height);
+
+    const mismatchPixels = pixelmatch(
+      img1Data.data,
+      img2Data.data,
+      diffImgData.data,
+      width,
+      height,
+      {
+        threshold: options.threshold,
+        includeAA: options.includeAA,
+        diffColor: options.diffColor,
+        aaColor: [255, 255, 0]
+      }
+    );
+
+    ctxDiff.putImageData(diffImgData, 0, 0);
+
+    const baselineBlob = await canvasToBlob(canvas1);
+    const currentBlob = await canvasToBlob(canvas2);
+    const diffBlob = await canvasToBlob(canvasDiff);
+
+    return {
+      width,
+      height,
+      mismatchPixels,
+      mismatchPercentage: ((mismatchPixels / (width * height)) * 100).toFixed(2),
+      baselineBlob,
+      currentBlob,
+      diffBlob
+    };
+  } finally {
+    if (file1 instanceof Blob) URL.revokeObjectURL(url1);
+    if (file2 instanceof Blob) URL.revokeObjectURL(url2);
+  }
+}
+
 /* ==========================================================================
    INTERACCIONES LÓGICAS - VYÚ (Vanilla JS Frontend)
    ========================================================================== */
 
 document.addEventListener('DOMContentLoaded', () => {
+
+  // Helper to revoke old state URLs
+  function revokeActiveUrls() {
+    if (state.baselineUrl && state.baselineUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(state.baselineUrl);
+    }
+    if (state.currentUrl && state.currentUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(state.currentUrl);
+    }
+    if (state.diffUrl && state.diffUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(state.diffUrl);
+    }
+  }
   
   // ==========================================
   // 1. ESTADO GLOBAL DE LA APLICACIÓN
@@ -12,6 +182,10 @@ document.addEventListener('DOMContentLoaded', () => {
     baselineUrl: '',
     currentUrl: '',
     diffUrl: '',
+    
+    // Blobs reales activos
+    baselineBlob: null,
+    currentBlob: null,
     
     // Archivos subidos en memoria para Quick Compare
     baselineFile: null,
@@ -69,6 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnUndoAnnot = document.getElementById('btn-undo-annot');
   const btnClearAnnot = document.getElementById('btn-clear-annot');
   const btnDownloadConfronted = document.getElementById('btn-download-confronted');
+  const btnNewCompare = document.getElementById('btn-new-compare');
   const actionControlsGroup = document.getElementById('action-controls-group');
   
   // Elementos de Imagen (Slider)
@@ -769,94 +944,136 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
-  // Ejecutar comparación rápida (Upload FormData)
+  // Ejecutar comparación rápida (Local Client-Side)
   btnQuickCompare.addEventListener('click', async () => {
     if (!state.baselineFile || !state.currentFile) return;
 
     try {
       btnQuickCompare.setAttribute('disabled', 'true');
       btnQuickCompare.querySelector('span').textContent = 'Comparando...';
-      writeToTerminal('system', 'Subiendo imágenes y ejecutando pixelmatch...');
+      writeToTerminal('system', 'Ejecutando pixelmatch localmente en el navegador...');
 
-      const formData = new FormData();
-      formData.append('baseline', state.baselineFile);
-      formData.append('current', state.currentFile);
-      formData.append('threshold', state.threshold);
-      formData.append('includeAA', state.includeAA);
-      formData.append('diffColor', JSON.stringify(state.diffColor));
+      const result = await compareImagesClientSide(
+        state.baselineFile,
+        state.currentFile,
+        {
+          threshold: state.threshold,
+          includeAA: state.includeAA,
+          diffColor: state.diffColor
+        }
+      );
 
-      const response = await fetch('/api/compare', {
-        method: 'POST',
-        body: formData
+      // Guardar blobs activos en el estado
+      revokeActiveUrls();
+      state.baselineBlob = result.baselineBlob;
+      state.currentBlob = result.currentBlob;
+
+      // Crear URLs locales
+      state.baselineUrl = URL.createObjectURL(result.baselineBlob);
+      state.currentUrl = URL.createObjectURL(result.currentBlob);
+      state.diffUrl = URL.createObjectURL(result.diffBlob);
+
+      // Guardar en IndexedDB
+      const compId = `diff-${Date.now()}`;
+      const name = `${state.baselineFile.name} vs ${state.currentFile.name}`;
+      
+      await saveLocalComparison({
+        id: compId,
+        name,
+        baselineBlob: result.baselineBlob,
+        currentBlob: result.currentBlob,
+        diffBlob: result.diffBlob,
+        timestamp: Date.now(),
+        meta: {
+          threshold: state.threshold,
+          includeAA: state.includeAA,
+          diffColor: state.diffColor,
+          mismatchPixels: result.mismatchPixels,
+          mismatchPercentage: result.mismatchPercentage,
+          width: result.width,
+          height: result.height
+        }
       });
 
-      const data = await response.json();
-
-      if (data.error) {
-        writeToTerminal('stderr', `[ERROR] ${data.error}`);
-        btnQuickCompare.removeAttribute('disabled');
-        btnQuickCompare.querySelector('span').textContent = 'Ejecutar Comparación Rápida';
-        return;
-      }
-
-      state.baselineUrl = data.baselineUrl;
-      state.currentUrl = data.currentUrl;
-      state.diffUrl = data.diffImageUrl;
-
       updateImagesInDOM();
-      displayResultsBar(data);
+      displayResultsBar({
+        mismatchPixels: result.mismatchPixels,
+        mismatchPercentage: result.mismatchPercentage,
+        diffImageUrl: state.diffUrl
+      });
 
       writeToTerminal('stdout', `[COMPARACIÓN LISTA]`);
-      writeToTerminal('stdout', `Diferencia detectada: ${data.mismatchPixels} píxeles (${data.mismatchPercentage}%)`);
+      writeToTerminal('stdout', `Diferencia detectada: ${result.mismatchPixels} píxeles (${result.mismatchPercentage}%)`);
       
     } catch (e) {
-      writeToTerminal('stderr', `Fallo en la llamada de red: ${e.message}`);
+      writeToTerminal('stderr', `Fallo al comparar imágenes: ${e.message}`);
     } finally {
       btnQuickCompare.removeAttribute('disabled');
       btnQuickCompare.querySelector('span').textContent = 'Ejecutar Comparación Rápida';
     }
   });
 
-  // Re-comparar con parámetros actualizados
+  // Re-comparar con parámetros actualizados (Local Client-Side)
   btnRecompare.addEventListener('click', async () => {
-    if (!state.baselineUrl || !state.currentUrl) {
-      writeToTerminal('system', 'Primero carga imágenes utilizando las muestras o subiendo archivos.');
+    if (!state.baselineBlob || !state.currentBlob) {
+      writeToTerminal('system', 'Primero carga imágenes subiendo archivos.');
       return;
     }
 
     try {
       btnRecompare.setAttribute('disabled', 'true');
-      writeToTerminal('system', `Actualizando Pixelmatch (Threshold: ${state.threshold} | includeAA: ${state.includeAA})...`);
+      writeToTerminal('system', `Actualizando Pixelmatch localmente (Threshold: ${state.threshold} | includeAA: ${state.includeAA})...`);
 
-      const payload = {
-        baselineUrl: state.baselineUrl,
-        currentUrl: state.currentUrl,
-        threshold: state.threshold,
-        includeAA: state.includeAA,
-        diffColor: JSON.stringify(state.diffColor)
-      };
+      const result = await compareImagesClientSide(
+        state.baselineBlob,
+        state.currentBlob,
+        {
+          threshold: state.threshold,
+          includeAA: state.includeAA,
+          diffColor: state.diffColor
+        }
+      );
 
-      const response = await fetch('/api/compare', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await response.json();
-
-      if (data.error) {
-        writeToTerminal('stderr', `[API ERROR] ${data.error}`);
-        return;
+      // Actualizar URLs de visualización
+      const oldDiffUrl = state.diffUrl;
+      state.diffUrl = URL.createObjectURL(result.diffBlob);
+      if (oldDiffUrl && oldDiffUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(oldDiffUrl);
       }
 
-      state.diffUrl = data.diffImageUrl;
-      updateImagesInDOM();
-      displayResultsBar(data);
+      // Guardar esta nueva comparación en IndexedDB
+      const compId = `diff-${Date.now()}`;
+      const name = `${state.baselineFile ? state.baselineFile.name : 'Imagen Base'} vs ${state.currentFile ? state.currentFile.name : 'Imagen Actual'}`;
+      
+      await saveLocalComparison({
+        id: compId,
+        name,
+        baselineBlob: state.baselineBlob,
+        currentBlob: state.currentBlob,
+        diffBlob: result.diffBlob,
+        timestamp: Date.now(),
+        meta: {
+          threshold: state.threshold,
+          includeAA: state.includeAA,
+          diffColor: state.diffColor,
+          mismatchPixels: result.mismatchPixels,
+          mismatchPercentage: result.mismatchPercentage,
+          width: result.width,
+          height: result.height
+        }
+      });
 
-      writeToTerminal('stdout', `[ACTUALIZADO] Píxeles discrepantes: ${data.mismatchPixels} (${data.mismatchPercentage}%)`);
+      updateImagesInDOM();
+      displayResultsBar({
+        mismatchPixels: result.mismatchPixels,
+        mismatchPercentage: result.mismatchPercentage,
+        diffImageUrl: state.diffUrl
+      });
+
+      writeToTerminal('stdout', `[ACTUALIZADO] Píxeles discrepantes: ${result.mismatchPixels} (${result.mismatchPercentage}%)`);
 
     } catch (e) {
-      writeToTerminal('stderr', `Error de red al actualizar: ${e.message}`);
+      writeToTerminal('stderr', `Error al actualizar la comparación: ${e.message}`);
     } finally {
       btnRecompare.removeAttribute('disabled');
     }
@@ -924,9 +1141,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ==========================================
   async function loadHistoryList(autoClickFirst = false) {
     try {
-      const response = await fetch('/api/images');
-      const data = await response.json();
-      const comparisons = data.comparisons || [];
+      const comparisons = await getLocalComparisons();
 
       historyContainer.innerHTML = '';
 
@@ -938,8 +1153,9 @@ document.addEventListener('DOMContentLoaded', () => {
       comparisons.forEach(comp => {
         const item = document.createElement('div');
         item.className = 'history-item';
+        item.style.position = 'relative';
         
-        const date = new Date(comp.mtime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const date = new Date(comp.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         
         let metaHtml = '';
         let passClass = 'text-fail';
@@ -958,26 +1174,44 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         item.innerHTML = `
-          <div class="history-item-meta">
+          <div class="history-item-meta" style="padding-right: 24px;">
             <span class="history-item-name" title="${comp.name}">${comp.name}</span>
             <span class="history-item-metric ${passClass}">${passText}</span>
           </div>
           <div class="history-item-details">
             <span>Hora: ${date}</span>
-            <span>Tipo: ${comp.meta ? 'Directo' : 'Script'}</span>
+            <span>Tipo: Local Privado</span>
           </div>
           ${metaHtml}
+          <button class="delete-history-btn" style="position: absolute; top: 10px; right: 10px; background: none; border: none; cursor: pointer; font-size: 0.8rem; opacity: 0.5; transition: opacity 0.2s;" title="Eliminar del historial">🗑️</button>
         `;
+
+        const delBtn = item.querySelector('.delete-history-btn');
+        delBtn.addEventListener('mouseenter', () => delBtn.style.opacity = '1');
+        delBtn.addEventListener('mouseleave', () => delBtn.style.opacity = '0.5');
+        delBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (confirm(`¿Estás seguro de que quieres eliminar "${comp.name}" del historial?`)) {
+            await deleteLocalComparison(comp.id);
+            writeToTerminal('system', `Eliminada comparación histórica: ${comp.name}`);
+            loadHistoryList();
+          }
+        });
         
         item.addEventListener('click', () => {
-          // Restaurar este diff al visualizador
-          writeToTerminal('system', `Restaurando comparación histórica: ${comp.name}`);
+          writeToTerminal('system', `Restaurando comparación histórica local: ${comp.name}`);
           
           if (comp.meta) {
-            // Si tiene metadata, restaurar estado completo
-            state.baselineUrl = comp.meta.baselineUrl;
-            state.currentUrl = comp.meta.currentUrl;
-            state.diffUrl = comp.url;
+            revokeActiveUrls();
+            
+            // Guardar blobs activos en el estado
+            state.baselineBlob = comp.baselineBlob;
+            state.currentBlob = comp.currentBlob;
+            
+            // Generar URLs temporales de visualización
+            state.baselineUrl = URL.createObjectURL(comp.baselineBlob);
+            state.currentUrl = URL.createObjectURL(comp.currentBlob);
+            state.diffUrl = URL.createObjectURL(comp.diffBlob);
             
             // Restaurar parámetros visuales en UI
             state.threshold = comp.meta.threshold;
@@ -989,7 +1223,6 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (comp.meta.diffColor) {
               state.diffColor = comp.meta.diffColor;
-              // Activar botón del color correspondiente
               colorDots.forEach(dot => {
                 const dotColor = JSON.parse(dot.dataset.color);
                 if (JSON.stringify(dotColor) === JSON.stringify(comp.meta.diffColor)) {
@@ -999,29 +1232,19 @@ document.addEventListener('DOMContentLoaded', () => {
               });
             }
             
-            // Renderizar imágenes
             updateImagesInDOM();
             
-            // Renderizar barra inferior
             displayResultsBar({
               mismatchPixels: comp.meta.mismatchPixels,
               mismatchPercentage: comp.meta.mismatchPercentage,
-              diffImageUrl: comp.url
+              diffImageUrl: state.diffUrl
             });
-          } else {
-            // Fallback para diffs sin metadata
-            state.baselineUrl = '';
-            state.currentUrl = '';
-            state.diffUrl = comp.url;
-            updateImagesInDOM();
-            writeToTerminal('stderr', 'Este diff no contiene metadatos de comparación completos.');
           }
         });
         
         historyContainer.appendChild(item);
       });
 
-      // Auto-click al primer elemento si se solicita
       if (autoClickFirst && comparisons.length > 0) {
         const firstItem = historyContainer.querySelector('.history-item');
         if (firstItem) {
@@ -1029,27 +1252,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
     } catch (e) {
-      historyContainer.innerHTML = '<p class="section-desc text-danger">Error al cargar historial.</p>';
-    }
-  }
-
-  // Evaluar imágenes actuales en el visualizador
-  async function reEvaluateCurrentState() {
-    if (!state.baselineUrl || !state.currentUrl) return;
-    const response = await fetch('/api/compare', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        baselineUrl: state.baselineUrl,
-        currentUrl: state.currentUrl,
-        threshold: state.threshold,
-        includeAA: state.includeAA,
-        diffColor: JSON.stringify(state.diffColor)
-      })
-    });
-    const data = await response.json();
-    if (!data.error) {
-      displayResultsBar(data);
+      historyContainer.innerHTML = '<p class="section-desc text-danger">Error al cargar historial local.</p>';
     }
   }
 
@@ -1098,15 +1301,15 @@ document.addEventListener('DOMContentLoaded', () => {
       const response = await fetch('/api/health');
       if (response.ok) {
         indicator.className = 'status-indicator online';
-        statusText.textContent = `Servidor Activo (Puerto 3000)`;
+        statusText.textContent = `Modo Local Privado (Sin Subidas)`;
         statusText.style.color = '#34d399';
       } else {
         throw new Error();
       }
     } catch (e) {
-      indicator.className = 'status-indicator offline';
-      statusText.textContent = 'Servidor Inactivo / Desconectado';
-      statusText.style.color = '#ff5577';
+      indicator.className = 'status-indicator online';
+      statusText.textContent = 'Navegador Privado (100% Client-Side)';
+      statusText.style.color = '#a855f7';
     }
   }
 
@@ -1255,6 +1458,74 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch (err) {
         writeToTerminal('stderr', `Error al exportar la comparativa: ${err.message}`);
       }
+    });
+  }
+  // Cerrar y limpiar comparativa actual (Workspace Reset)
+  if (btnNewCompare) {
+    btnNewCompare.addEventListener('click', () => {
+      revokeActiveUrls();
+      
+      // Resetear estado
+      state.baselineUrl = '';
+      state.currentUrl = '';
+      state.diffUrl = '';
+      state.baselineFile = null;
+      state.currentFile = null;
+      state.baselineBlob = null;
+      state.currentBlob = null;
+      
+      // Resetear inputs de archivo
+      if (fileBaseline) fileBaseline.value = '';
+      if (fileCurrent) fileCurrent.value = '';
+      
+      // Resetear nombres de archivo
+      if (nameBaseline) {
+        nameBaseline.textContent = 'Sin archivo';
+        nameBaseline.classList.remove('loaded');
+      }
+      if (nameCurrent) {
+        nameCurrent.textContent = 'Sin archivo';
+        nameCurrent.classList.remove('loaded');
+      }
+      
+      // Resetear bordes de zonas de carga
+      if (zoneBaseline) zoneBaseline.style.borderColor = '';
+      if (zoneCurrent) zoneCurrent.style.borderColor = '';
+      
+      // Deshabilitar botón de comparar
+      if (btnQuickCompare) btnQuickCompare.setAttribute('disabled', 'true');
+      
+      // Resetear imágenes en el DOM
+      imgBaseSbs.src = '';
+      imgCurrentSbs.src = '';
+      imgDiffSbs.src = '';
+      if (imgBaseSlider) imgBaseSlider.src = '';
+      if (imgCurrentSlider) imgCurrentSlider.src = '';
+      if (imgBaseOverlay) imgBaseOverlay.src = '';
+      if (imgCurrentOverlay) imgCurrentOverlay.src = '';
+      
+      // Limpiar marcas
+      state.annotations = [];
+      redrawAllCanvases();
+      
+      // Resetear etiquetas de dimensiones
+      if (dimBaseline) dimBaseline.textContent = '-';
+      if (dimCurrent) dimCurrent.textContent = '-';
+      if (dimDiff) dimDiff.textContent = '-';
+      
+      // Resetear barra de resultados inferior
+      if (resMismatchPixels) resMismatchPixels.textContent = '0 px';
+      if (resMismatchPercentage) resMismatchPercentage.textContent = '0.00%';
+      if (resStatusBadge) {
+        resStatusBadge.textContent = 'Sin evaluar';
+        resStatusBadge.className = 'badge-status';
+      }
+      if (btnDownloadDiff) btnDownloadDiff.style.display = 'none';
+      
+      // Ocultar barra de herramientas y controles
+      updateToolbarVisibility();
+      
+      writeToTerminal('system', 'Workspace limpiado. Listo para una nueva comparación.');
     });
   }
 
