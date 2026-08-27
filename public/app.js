@@ -1916,16 +1916,36 @@ document.addEventListener('DOMContentLoaded', () => {
   // 11.5 MANEJO DE HERRAMIENTAS DE ANOTACIÓN Y QA
   // ==========================================
 
-  // Botones de herramientas de dibujo y marcas
+  // Botones de Mover y Seleccionar
   toolBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       toolBtns.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
+      if (selectShapeTool) {
+        selectShapeTool.classList.remove('active-select');
+      }
       state.activeTool = btn.dataset.tool;
       updateCursor();
       const toolNames = {
         pan: '✋ Mover / Paneo',
-        select: '↖️ Seleccionar y Mover',
+        select: '↖️ Seleccionar y Mover'
+      };
+      writeToTerminal('system', `Modo activo: ${toolNames[state.activeTool] || state.activeTool}`);
+    });
+  });
+
+  // Selector desplegable de Formas / Herramientas de Dibujo
+  if (selectShapeTool) {
+    const activateShapeTool = () => {
+      state.activeTool = selectShapeTool.value;
+      toolBtns.forEach(b => b.classList.remove('active'));
+      selectShapeTool.classList.add('active-select');
+      updateCursor();
+    };
+
+    selectShapeTool.addEventListener('change', () => {
+      activateShapeTool();
+      const toolNames = {
         pencil: '✏️ Lápiz (Libre)',
         rect: '⬜ Rectángulo',
         circle: '⭕ Círculo',
@@ -1935,7 +1955,13 @@ document.addEventListener('DOMContentLoaded', () => {
       };
       writeToTerminal('system', `Herramienta activa: ${toolNames[state.activeTool] || state.activeTool}`);
     });
-  });
+
+    selectShapeTool.addEventListener('click', () => {
+      if (state.activeTool === 'pan' || state.activeTool === 'select') {
+        activateShapeTool();
+      }
+    });
+  }
 
   // Selector desplegable de Grosor
   if (selectThickness) {

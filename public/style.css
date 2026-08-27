@@ -1360,6 +1360,13 @@ body {
   border-color: var(--indigo);
 }
 
+.toolbar-select.active-select {
+  border-color: var(--indigo);
+  background: rgba(99, 102, 241, 0.15);
+  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.3), 0 0 8px rgba(99, 102, 241, 0.2);
+  color: #ffffff;
+}
+
 .annotation-colors {
   display: flex;
   gap: 6px;
