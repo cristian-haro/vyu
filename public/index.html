@@ -221,19 +221,24 @@
             <button class="tool-btn" id="tool-select" data-tool="select" title="Seleccionar y Mover Marcas (Supr para borrar)">
               <span class="tool-icon">↖️</span> <span class="tool-btn-text">Seleccionar</span>
             </button>
-
-            <!-- Selector desplegable de Formas de Dibujo -->
-            <div class="toolbar-dropdown-wrapper" style="display: flex; align-items: center; gap: 6px;">
-              <span class="toolbar-label">Herramienta:</span>
-              <select id="select-shape-tool" class="toolbar-select">
-                <option value="pencil">✏️ Lápiz (Libre)</option>
-                <option value="rect" selected>⬜ Rectángulo</option>
-                <option value="circle">⭕ Círculo</option>
-                <option value="text">💬 Nota de Texto</option>
-                <option value="ignore">🛡️ Zona de Ignorado (Exclusión)</option>
-                <option value="eraser">🧽 Borrador</option>
-              </select>
-            </div>
+            <button class="tool-btn" id="tool-pencil" data-tool="pencil" title="Lápiz (Mano Alzada)">
+              <span class="tool-icon">✏️</span> <span class="tool-btn-text">Lápiz</span>
+            </button>
+            <button class="tool-btn" id="tool-rect" data-tool="rect" title="Rectángulo">
+              <span class="tool-icon">⬜</span> <span class="tool-btn-text">Rectángulo</span>
+            </button>
+            <button class="tool-btn" id="tool-circle" data-tool="circle" title="Círculo">
+              <span class="tool-icon">⭕</span> <span class="tool-btn-text">Círculo</span>
+            </button>
+            <button class="tool-btn" id="tool-ignore" data-tool="ignore" title="Zona de Ignorado / Exclusión en Diff" style="color: #fbbf24; border-color: rgba(251, 191, 36, 0.35);">
+              <span class="tool-icon">🛡️</span> <span class="tool-btn-text">Ignorar</span>
+            </button>
+            <button class="tool-btn" id="tool-text" data-tool="text" title="Nota de Texto">
+              <span class="tool-icon">💬</span> <span class="tool-btn-text">Nota</span>
+            </button>
+            <button class="tool-btn" id="tool-eraser" data-tool="eraser" title="Borrador">
+              <span class="tool-icon">🧽</span> <span class="tool-btn-text">Borrador</span>
+            </button>
           </div>
           
           <div class="toolbar-separator"></div>

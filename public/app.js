@@ -923,6 +923,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
           // Modo Dibujo (Pencil, Rect, Circle, Ignore)
           state.isDrawing = true;
+          state.drawingViewport = viewport;
           state.drawStartX = clickX;
           state.drawStartY = clickY;
           
@@ -958,11 +959,11 @@ document.addEventListener('DOMContentLoaded', () => {
       state.panY = e.clientY - state.startY;
       applyTransformations();
     } else if (state.isDraggingShape && state.selectedShape) {
-      const img = imgBaseSbs;
-      if (!img || !img.src || img.naturalWidth === 0) return;
-      const rect = img.getBoundingClientRect();
-      const curX = ((e.clientX - rect.left) / rect.width) * img.naturalWidth;
-      const curY = ((e.clientY - rect.top) / rect.height) * img.naturalHeight;
+      const activeImg = (state.drawingViewport ? state.drawingViewport.querySelector('img') : null) || imgBaseSbs;
+      if (!activeImg || !activeImg.src || activeImg.naturalWidth === 0) return;
+      const rect = activeImg.getBoundingClientRect();
+      const curX = ((e.clientX - rect.left) / rect.width) * activeImg.naturalWidth;
+      const curY = ((e.clientY - rect.top) / rect.height) * activeImg.naturalHeight;
       const dx = curX - state.dragShapeStartX;
       const dy = curY - state.dragShapeStartY;
 
@@ -973,12 +974,12 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       redrawAllCanvases();
     } else if (state.isDrawing && state.currentShape) {
-      const img = imgBaseSbs;
-      if (!img || !img.src || img.naturalWidth === 0) return;
+      const activeImg = (state.drawingViewport ? state.drawingViewport.querySelector('img') : null) || imgBaseSbs;
+      if (!activeImg || !activeImg.src || activeImg.naturalWidth === 0) return;
       
-      const rect = img.getBoundingClientRect();
-      const curX = ((e.clientX - rect.left) / rect.width) * img.naturalWidth;
-      const curY = ((e.clientY - rect.top) / rect.height) * img.naturalHeight;
+      const rect = activeImg.getBoundingClientRect();
+      const curX = ((e.clientX - rect.left) / rect.width) * activeImg.naturalWidth;
+      const curY = ((e.clientY - rect.top) / rect.height) * activeImg.naturalHeight;
       
       if (state.currentShape.type === 'pencil') {
         state.currentShape.points.push({ x: curX, y: curY });
@@ -1007,12 +1008,14 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } else if (state.isDraggingShape) {
       state.isDraggingShape = false;
+      state.drawingViewport = null;
       // Si movimos una zona de ignorado, recalcular diff
       if (state.selectedShape && state.selectedShape.type === 'ignore' && state.baselineBlob && state.currentBlob) {
         btnRecompare.click();
       }
     } else if (state.isDrawing) {
       state.isDrawing = false;
+      state.drawingViewport = null;
       if (state.currentShape) {
         if ((state.currentShape.type === 'rect' || state.currentShape.type === 'ignore') && state.currentShape.w < 4 && state.currentShape.h < 4) {
           state.annotations.pop();
@@ -1910,7 +1913,61 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   // ==========================================
-  // 11.5 ACCIONES DE ANOTACIÓN Y EXPORTACIÓN
+  // 11.5 MANEJO DE HERRAMIENTAS DE ANOTACIÓN Y QA
+  // ==========================================
+
+  // Botones de herramientas de dibujo y marcas
+  toolBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      toolBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.activeTool = btn.dataset.tool;
+      updateCursor();
+      const toolNames = {
+        pan: '✋ Mover / Paneo',
+        select: '↖️ Seleccionar y Mover',
+        pencil: '✏️ Lápiz (Libre)',
+        rect: '⬜ Rectángulo',
+        circle: '⭕ Círculo',
+        ignore: '🛡️ Zona de Ignorado (Exclusión)',
+        text: '💬 Nota de Texto',
+        eraser: '🧽 Borrador'
+      };
+      writeToTerminal('system', `Herramienta activa: ${toolNames[state.activeTool] || state.activeTool}`);
+    });
+  });
+
+  // Selector desplegable de Grosor
+  if (selectThickness) {
+    selectThickness.addEventListener('change', (e) => {
+      state.annotationThickness = parseInt(e.target.value, 10);
+      writeToTerminal('system', `Grosor de marca cambiado a: ${state.annotationThickness}px`);
+    });
+  }
+
+  // Selector desplegable de Color
+  if (selectAnnotColor) {
+    selectAnnotColor.addEventListener('change', (e) => {
+      state.annotationColor = e.target.value;
+      writeToTerminal('system', `Color de marca cambiado a: ${state.annotationColor}`);
+    });
+  }
+
+  // Botón Toggle Cajas de Error
+  if (btnToggleErrorBoxes) {
+    btnToggleErrorBoxes.addEventListener('click', () => {
+      state.showErrorBoxes = !state.showErrorBoxes;
+      btnToggleErrorBoxes.classList.toggle('active', state.showErrorBoxes);
+      if (lblErrorToggle) {
+        lblErrorToggle.textContent = state.showErrorBoxes ? 'ON' : 'OFF';
+      }
+      redrawAllCanvases();
+      writeToTerminal('system', `Cajas de error automáticas: ${state.showErrorBoxes ? 'ACTIVADAS' : 'OCULTAS'}`);
+    });
+  }
+
+  // ==========================================
+  // 11.6 ACCIONES DE ANOTACIÓN Y EXPORTACIÓN
   // ==========================================
 
   // Deshacer (Undo)
