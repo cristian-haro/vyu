@@ -1,0 +1,31 @@
+appId: "com.vyu.workspace.web"
+tags:
+  - regression
+  - cross-platform
+  - visual-qa
+---
+# Flow 1: Desktop Visual Regression & Synchronization Flow
+- openLink: "http://localhost:3000"
+- assertVisible: "Vyú"
+- assertVisible: "Carga Rápida (Quick Compare)"
+
+# Verify tab mode switching
+- tapOn: "Split Slider"
+- assertVisible: "BASE (Izquierda)"
+- assertVisible: "CURRENT (Derecha)"
+
+- tapOn: "Opacity Overlay"
+- assertVisible: "CURRENT"
+
+- tapOn: "Side-by-Side"
+- assertVisible: "BASE (V1)"
+- assertVisible: "CURRENT (V2)"
+- assertVisible: "DIFF (DIFERENCIAS)"
+
+# Verify Demo Dataset Loading
+- tapOn: "Cargar Ejemplo de Prueba (Demo)"
+- assertVisible: "Desajuste de Píxeles"
+
+# Verify Zoom & Navigation Controls
+- tapOn: "Restaurar"
+- assertVisible: "100%"

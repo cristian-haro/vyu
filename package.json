@@ -2,10 +2,13 @@
   "name": "vyu",
   "version": "1.0.0",
   "description": "Vyú - Premium interactive workspace for visual design testing and regression comparison",
+  "type": "module",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "test": "node --test tests/cross-platform-qa.test.js",
+    "test:qa": "node scripts/run-qa-maestro.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
